@@ -135,9 +135,9 @@ extension AppDelegate: DeepgramWebSocketDelegate {
     func deepgramWebSocket(_ ws: DeepgramWebSocket, didReceiveTranscript text: String, isFinal: Bool) {
         transcriptAssembler.addResult(text: text, isFinal: isFinal)
 
-        // Stream text into the active app in real-time
+        // Show live transcript in the overlay — no pasting during recording
         let currentText = transcriptAssembler.fullTranscript
-        clipboardManager.updateStreamingText(currentText)
+        overlayViewController.updateTranscript(currentText)
 
         if isFinal {
             v2log("Final: \(text)")
@@ -158,8 +158,8 @@ extension AppDelegate: DeepgramWebSocketDelegate {
             return
         }
 
-        // Copy final transcript to clipboard as fallback
-        clipboardManager.copyToClipboard(transcript)
+        // Single paste of the full transcript — no garbling possible
+        clipboardManager.pasteFromClipboard(transcript)
         let preview = String(transcript.prefix(80))
         v2log("Done: \(preview)\(transcript.count > 80 ? "..." : "")")
     }
