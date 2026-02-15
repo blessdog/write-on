@@ -90,6 +90,7 @@ extension AppDelegate: HotkeyManagerDelegate {
         soundFeedback.playStartSound()
         transcriptAssembler.reset()
         clipboardManager.resetStreaming()
+        overlayViewController.updateTranscript("")
 
         deepgramWebSocket.connect()
         audioCaptureManager.startCapture()
