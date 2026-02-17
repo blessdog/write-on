@@ -318,17 +318,29 @@
 </head>
 <body>
 
+<!-- ── Nav ── -->
+<nav style="position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:1rem 2rem;background:rgba(10,10,15,0.85);backdrop-filter:blur(12px);border-bottom:1px solid rgba(61,255,216,0.08);">
+  <a href="/" style="font-family:var(--mono);font-size:1.1rem;font-weight:700;color:var(--text);text-decoration:none;">Write<span style="color:var(--cyan);">On</span></a>
+  <div style="display:flex;gap:1.5rem;align-items:center;">
+    <a href="/pricing/" style="font-family:var(--mono);font-size:0.8rem;color:var(--text-dim);text-decoration:none;letter-spacing:0.05em;">Pricing</a>
+    <a href="/login/" style="font-family:var(--mono);font-size:0.8rem;color:var(--cyan);text-decoration:none;letter-spacing:0.05em;">Sign In</a>
+  </div>
+</nav>
+
 <!-- ── Hero ── -->
 <section class="hero">
   <canvas id="waveCanvas"></canvas>
   <div class="hero-content">
     <h1 class="logo-mark">Write<span>On</span></h1>
     <p class="tagline">Voice to text, instantly</p>
-    <a href="https://github.com/blessdog/write-on/releases/latest/download/WriteOn.dmg" class="cta">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    <a href="/signup/" class="cta" style="margin-bottom:0.5rem;">
+      Get Started Free
+    </a>
+    <a href="https://github.com/blessdog/write-on/releases/latest/download/WriteOn.dmg" class="cta" style="background:transparent;color:var(--cyan);border:1px solid var(--cyan-dim);font-size:0.85rem;padding:0.6em 1.5em;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       Download for macOS
     </a>
-    <span class="cta-sub">macOS 13+ &middot; Apple Silicon &middot; ~300KB</span>
+    <span class="cta-sub">Free tier &middot; 15 min/month &middot; No credit card required</span>
   </div>
   <div class="scroll-hint">
     <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
@@ -360,8 +372,8 @@
       <p>Lives in your menu bar. No dock icon, no windows. It's there when you need it, invisible when you don't.</p>
     </div>
     <div class="feature">
-      <h3>Secure by design</h3>
-      <p>API key stored in macOS Keychain. Hardened runtime. Notarized by Apple. No telemetry, no analytics.</p>
+      <h3>Private by design</h3>
+      <p>Zero-knowledge architecture. Transcripts encrypted on-device, never stored on our servers. Notarized by Apple. No telemetry.</p>
     </div>
   </div>
 </section>
@@ -435,11 +447,10 @@
 <footer class="footer">
   <div class="footer-logo">Write<span>On</span></div>
   <p>Made with taste. Shipped with care.</p>
-  <a href="https://github.com/blessdog/write-on/releases/latest/download/WriteOn.dmg" class="cta">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-    Download for macOS
+  <a href="/signup/" class="cta">
+    Get Started Free
   </a>
-  <p style="margin-top: 1.5rem;">Requires a <a href="https://deepgram.com" style="color: var(--cyan); text-decoration: none;">Deepgram</a> API key (free tier available)</p>
+  <p style="margin-top: 1.5rem;">15 free minutes/month &middot; No credit card required &middot; <a href="/pricing/" style="color: var(--cyan); text-decoration: none;">See pricing</a></p>
 </footer>
 
 <!-- ── Waveform Canvas ── -->

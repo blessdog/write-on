@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign In — Write On</title>
+<meta name="description" content="Sign in to your Write On account.">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500;600&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0a0a0f;
+    --bg-subtle: #0e0e16;
+    --bg-card: #11111a;
+    --cyan: #3dffd8;
+    --cyan-dim: #1a8a6e;
+    --cyan-glow: rgba(61, 255, 216, 0.15);
+    --text: #e0f0ec;
+    --text-dim: #6a8a82;
+    --mono: 'Space Mono', 'SF Mono', 'Fira Code', monospace;
+    --sans: 'Inter', -apple-system, system-ui, sans-serif;
+    --border: rgba(61, 255, 216, 0.1);
+    --border-bright: rgba(61, 255, 216, 0.25);
+    --error: #ff6b6b;
+    --error-bg: rgba(255, 107, 107, 0.08);
+  }
+
+  html {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    overflow-x: hidden;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Nav ── */
+  .nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.2rem 2rem;
+    max-width: 1100px;
+    margin: 0 auto;
+    width: 100%;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .nav-logo {
+    font-family: var(--mono);
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  .nav-logo span {
+    color: var(--cyan);
+  }
+
+  .nav-links {
+    display: flex;
+    align-items: center;
+    gap: 1.8rem;
+    list-style: none;
+  }
+
+  .nav-links a {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    text-decoration: none;
+    letter-spacing: 0.04em;
+    transition: color 0.2s;
+  }
+
+  .nav-links a:hover {
+    color: var(--cyan);
+  }
+
+  /* ── Auth Card ── */
+  .auth-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+  }
+
+  .auth-card {
+    width: 100%;
+    max-width: 400px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    padding: 2.5rem 2.5rem 2rem;
+    clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
+  }
+
+  .auth-card h1 {
+    font-family: var(--mono);
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 0.4rem;
+  }
+
+  .auth-card h1 span {
+    color: var(--cyan);
+  }
+
+  .auth-subtitle {
+    font-size: 0.88rem;
+    color: var(--text-dim);
+    margin-bottom: 2rem;
+  }
+
+  /* ── Form ── */
+  .form-group {
+    margin-bottom: 1.2rem;
+  }
+
+  .form-group label {
+    display: block;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.4rem;
+  }
+
+  .form-group input {
+    width: 100%;
+    font-family: var(--mono);
+    font-size: 0.88rem;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 0.75em 1em;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  .form-group input::placeholder {
+    color: var(--text-dim);
+    opacity: 0.5;
+  }
+
+  .form-group input:focus {
+    border-color: var(--cyan-dim);
+    box-shadow: 0 0 0 2px var(--cyan-glow);
+  }
+
+  .form-actions {
+    margin-top: 1.5rem;
+  }
+
+  .btn-submit {
+    display: block;
+    width: 100%;
+    font-family: var(--mono);
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--bg);
+    background: var(--cyan);
+    border: none;
+    padding: 0.9em 1.5em;
+    cursor: pointer;
+    transition: all 0.2s;
+    clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+  }
+
+  .btn-submit:hover {
+    background: #fff;
+    box-shadow: 0 4px 30px var(--cyan-glow);
+  }
+
+  .btn-submit:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* ── Error / Success Messages ── */
+  .message {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    padding: 0.7em 1em;
+    margin-bottom: 1.2rem;
+    display: none;
+    line-height: 1.4;
+  }
+
+  .message.error {
+    color: var(--error);
+    background: var(--error-bg);
+    border: 1px solid rgba(255, 107, 107, 0.2);
+    display: block;
+  }
+
+  .message.success {
+    color: var(--cyan);
+    background: var(--cyan-glow);
+    border: 1px solid rgba(61, 255, 216, 0.2);
+    display: block;
+  }
+
+  /* ── Links ── */
+  .auth-links {
+    margin-top: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    text-align: center;
+  }
+
+  .auth-links a {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+
+  .auth-links a:hover {
+    color: var(--cyan);
+  }
+
+  .auth-links a strong {
+    color: var(--cyan);
+    font-weight: 700;
+  }
+
+  /* ── Forgot Password (inline) ── */
+  .forgot-link {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    text-decoration: none;
+    margin-top: 0.4rem;
+    transition: color 0.2s;
+    cursor: pointer;
+  }
+
+  .forgot-link:hover {
+    color: var(--cyan);
+  }
+
+  /* ── Footer ── */
+  .footer {
+    padding: 2rem;
+    text-align: center;
+    border-top: 1px solid var(--border);
+  }
+
+  .footer p {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+  }
+
+  @media (max-width: 600px) {
+    .auth-card {
+      padding: 2rem 1.5rem 1.5rem;
+    }
+    .nav {
+      padding: 1rem 1.2rem;
+    }
+    .nav-links {
+      gap: 1rem;
+    }
+    .nav-links a {
+      font-size: 0.7rem;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Nav ── -->
+<nav class="nav">
+  <a href="/" class="nav-logo">Write<span>On</span></a>
+  <ul class="nav-links">
+    <li><a href="/">Home</a></li>
+    <li><a href="/pricing/">Pricing</a></li>
+    <li><a href="/login/">Sign In</a></li>
+  </ul>
+</nav>
+
+<!-- ── Auth Card ── -->
+<div class="auth-container">
+  <div class="auth-card">
+    <h1>Sign <span>in</span></h1>
+    <p class="auth-subtitle">Welcome back. Enter your credentials below.</p>
+
+    <div class="message" id="message"></div>
+
+    <form id="loginForm" autocomplete="on">
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" placeholder="you@example.com" required autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" placeholder="Your password" required autocomplete="current-password">
+        <a class="forgot-link" id="forgotLink">Forgot password?</a>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn-submit" id="submitBtn">Sign In</button>
+      </div>
+    </form>
+
+    <div class="auth-links">
+      <a href="/signup/">Don't have an account? <strong>Sign Up</strong></a>
+    </div>
+  </div>
+</div>
+
+<!-- ── Footer ── -->
+<footer class="footer">
+  <p>Write On &mdash; Voice to text, instantly</p>
+</footer>
+
+<script>
+(function() {
+  // ── Supabase init ──
+  const SUPABASE_URL = 'https://oknhmmjpzkujiuhvwnuf.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9rbmhtbWpwemt1aml1aHZ3bnVmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEyODIxOTksImV4cCI6MjA4Njg1ODE5OX0.mWu4uaUQTMS7jutA5_OBxU9H0GhKGRtcJ6Pc2nNWzCw';
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const form = document.getElementById('loginForm');
+  const emailInput = document.getElementById('email');
+  const passwordInput = document.getElementById('password');
+  const submitBtn = document.getElementById('submitBtn');
+  const messageEl = document.getElementById('message');
+  const forgotLink = document.getElementById('forgotLink');
+
+  function showMessage(text, type) {
+    messageEl.textContent = text;
+    messageEl.className = 'message ' + type;
+  }
+
+  function clearMessage() {
+    messageEl.className = 'message';
+    messageEl.textContent = '';
+  }
+
+  // ── Already logged in? Redirect ──
+  async function checkSession() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      window.location.href = '/dashboard/';
+    }
+  }
+  checkSession();
+
+  // ── Sign In ──
+  form.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    clearMessage();
+
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+
+    if (!email || !password) {
+      showMessage('Please fill in all fields.', 'error');
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Signing in...';
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email,
+        password: password
+      });
+
+      if (error) {
+        showMessage(error.message, 'error');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Sign In';
+        return;
+      }
+
+      // Success — redirect to dashboard
+      showMessage('Success! Redirecting...', 'success');
+      setTimeout(function() {
+        window.location.href = '/dashboard/';
+      }, 500);
+
+    } catch (err) {
+      showMessage('An unexpected error occurred. Please try again.', 'error');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Sign In';
+    }
+  });
+
+  // ── Forgot Password ──
+  forgotLink.addEventListener('click', async function(e) {
+    e.preventDefault();
+    clearMessage();
+
+    const email = emailInput.value.trim();
+    if (!email) {
+      showMessage('Enter your email address above, then click "Forgot password?"', 'error');
+      emailInput.focus();
+      return;
+    }
+
+    forgotLink.textContent = 'Sending...';
+    forgotLink.style.pointerEvents = 'none';
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + '/login/'
+      });
+
+      if (error) {
+        showMessage(error.message, 'error');
+      } else {
+        showMessage('Password reset email sent. Check your inbox.', 'success');
+      }
+    } catch (err) {
+      showMessage('Failed to send reset email. Please try again.', 'error');
+    }
+
+    forgotLink.textContent = 'Forgot password?';
+    forgotLink.style.pointerEvents = 'auto';
+  });
+})();
+</script>
+
+</body>
+</html>
