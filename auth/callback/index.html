@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Signing in — Write On</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a0f;
+    color: #e0f0ec;
+    font-family: 'Space Mono', monospace;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    text-align: center;
+  }
+  .container { padding: 2rem; }
+  h2 { font-size: 1.2rem; margin-bottom: 1rem; }
+  p { font-size: 0.85rem; color: #6a8a82; }
+  .spinner {
+    width: 32px; height: 32px;
+    border: 3px solid rgba(61,255,216,0.2);
+    border-top-color: #3dffd8;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 1.5rem;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  a { color: #3dffd8; text-decoration: none; font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="spinner"></div>
+  <h2>Signing you in...</h2>
+  <p id="status">Opening Write On app...</p>
+  <p id="fallback" style="margin-top: 2rem; display: none;">
+    <a href="#" id="openApp">Click here to open Write On</a>
+  </p>
+</div>
+<script>
+(function() {
+  // Supabase redirects here with tokens in the URL hash fragment
+  var hash = window.location.hash.substring(1);
+  if (!hash) {
+    document.getElementById('status').textContent = 'No authentication data received.';
+    return;
+  }
+
+  // Build the writeon:// deep link with the same fragment
+  var deepLink = 'writeon://auth/callback#' + hash;
+
+  // Try to open the app
+  window.location.href = deepLink;
+
+  // Show fallback link after a short delay in case the redirect didn't work
+  setTimeout(function() {
+    var fallback = document.getElementById('fallback');
+    fallback.style.display = 'block';
+    document.getElementById('openApp').href = deepLink;
+    document.getElementById('status').textContent = 'If the app didn\'t open automatically:';
+  }, 2000);
+})();
+</script>
+</body>
+</html>
