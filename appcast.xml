@@ -27,7 +27,7 @@
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
       <enclosure
         url="https://github.com/blessdog/write-on/releases/download/v2.0.0/WriteOn.dmg"
-        sparkle:edSignature="SIGNATURE_PLACEHOLDER"
+        sparkle:edSignature="CTkKfhCQSGvkPrbWnC2oAHUqY7kJKd/tcUDCJCRhdemce0RIQwapfaWQlRDMCQW176lpkkLKYJLXN4EGYV9TDA=="
         length="1632624"
         type="application/octet-stream"
       />
