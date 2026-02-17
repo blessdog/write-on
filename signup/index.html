@@ -559,6 +559,14 @@
         return;
       }
 
+      // Detect existing user (Supabase returns user with empty identities)
+      if (data.user && data.user.identities && data.user.identities.length === 0) {
+        showMessage('An account with this email already exists. Please sign in instead.', 'error');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Create Account';
+        return;
+      }
+
       // Show confirmation view
       confirmEmail.textContent = email;
       signupView.style.display = 'none';
