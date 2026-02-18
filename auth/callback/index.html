@@ -68,16 +68,8 @@
   var btn = document.getElementById('openBtn');
   btn.href = deepLink;
 
-  // Also try automatic redirect via hidden iframe (avoids Safari/Brave blocking)
-  var iframe = document.createElement('iframe');
-  iframe.style.display = 'none';
-  iframe.src = deepLink;
-  document.body.appendChild(iframe);
-
-  // After a short delay, also try window.location
-  setTimeout(function() {
-    window.location.href = deepLink;
-  }, 500);
+  // Try one automatic redirect (no iframe — that causes double callbacks)
+  window.location.href = deepLink;
 
   // Update hint after delay
   setTimeout(function() {
