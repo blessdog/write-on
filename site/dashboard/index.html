@@ -642,15 +642,14 @@
     try {
       const { data: profile, error } = await supabase
         .from('profiles')
-        .select('plan, usage_minutes, stripe_customer_id, billing_interval')
+        .select('subscription, monthly_minutes_limit, stripe_customer_id, stripe_subscription_id, subscription_expires_at')
         .eq('id', user.id)
         .single();
 
       if (profile && !error) {
-        plan = profile.plan || 'free';
-        usageMinutes = profile.usage_minutes || 0;
+        plan = profile.subscription || 'free';
+        limitMinutes = profile.monthly_minutes_limit || 15;
         stripeCustomerId = profile.stripe_customer_id || null;
-        billingInterval = profile.billing_interval || null;
       }
     } catch (err) {
       console.warn('Could not fetch profile:', err);
