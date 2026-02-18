@@ -27,6 +27,8 @@ class SessionManager {
 
     var email: String? { cachedEmail }
     var userId: String? { cachedUserId }
+    var accessToken: String? { cachedAccessToken }
+    var refreshToken: String? { cachedRefreshToken }
 
     func saveSession(_ session: AuthSession) {
         cachedAccessToken = session.accessToken

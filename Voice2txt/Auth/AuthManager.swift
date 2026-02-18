@@ -122,6 +122,8 @@ class AuthManager {
         components.queryItems = [
             URLQueryItem(name: "provider", value: "google"),
             URLQueryItem(name: "redirect_to", value: "https://write-on.app/auth/callback/"),
+            // Cache-buster prevents browser from reusing a stale OAuth state
+            URLQueryItem(name: "_t", value: String(Int(Date().timeIntervalSince1970))),
         ]
         return components.url!
     }

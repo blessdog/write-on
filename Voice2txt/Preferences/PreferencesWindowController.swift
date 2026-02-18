@@ -2,10 +2,29 @@ import Cocoa
 
 class PreferencesWindowController: NSObject {
     private var window: NSWindow?
-    private var hotkeyField: NSTextField!
-    private var hotkeyStatusLabel: NSTextField!
     private var languagePopup: NSPopUpButton!
     private var micPopup: NSPopUpButton!
+
+    // Hotkey UI
+    private var longHotkeyLabel: NSTextField!
+    private var longChangeButton: NSButton!
+    private var shortHotkeyLabel: NSTextField!
+    private var shortChangeButton: NSButton!
+    private var conflictLabel: NSTextField!
+
+    // Capture state
+    private var capturingLong = false
+    private var capturingShort = false
+    private var captureMonitors: [Any] = []
+    private var captureModifierTimer: Timer?
+    private var capturedModifierName: String?
+    private var capturedModifierKeyCodes: Set<UInt16>?
+    private var capturedModifierFlag: NSEvent.ModifierFlags?
+
+    // Reference to HotkeyManager for reloading
+    var hotkeyManager: HotkeyManager?
+
+    private let teal = NSColor(red: 0.24, green: 1, blue: 0.85, alpha: 1)
 
     func showWindow() {
         if let window = window {
@@ -15,7 +34,7 @@ class PreferencesWindowController: NSObject {
         }
 
         let w: CGFloat = 480
-        let h: CGFloat = 480
+        let h: CGFloat = 520
 
         let win = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: w, height: h),
@@ -26,6 +45,7 @@ class PreferencesWindowController: NSObject {
         win.title = "Write On — Preferences"
         win.center()
         win.isReleasedWhenClosed = false
+        win.delegate = self
         win.backgroundColor = NSColor(red: 0.04, green: 0.04, blue: 0.06, alpha: 1)
         win.titlebarAppearsTransparent = true
         win.appearance = NSAppearance(named: .darkAqua)
@@ -39,32 +59,54 @@ class PreferencesWindowController: NSObject {
         content.addSubview(hotkeyHeader)
         y -= 30
 
-        let longRecordLabel = descLabel("Long Recording (toggle):", y: y)
-        content.addSubview(longRecordLabel)
-        y -= 28
+        // Long Recording row
+        let longLabel = descLabel("Long Recording:", y: y)
+        content.addSubview(longLabel)
 
-        hotkeyField = NSTextField(frame: NSRect(x: 40, y: y, width: 200, height: 24))
-        hotkeyField.placeholderString = "Double-tap Ctrl"
-        hotkeyField.stringValue = UserDefaults.standard.string(forKey: "hotkey.longRecord") ?? "Double-tap Ctrl"
-        hotkeyField.isEditable = false
-        hotkeyField.bezelStyle = .roundedBezel
-        hotkeyField.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-        content.addSubview(hotkeyField)
+        let longDisplay = UserDefaults.standard.string(forKey: "hotkey.long.display") ?? "Double-tap Ctrl"
+        longHotkeyLabel = NSTextField(labelWithString: longDisplay)
+        longHotkeyLabel.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .bold)
+        longHotkeyLabel.textColor = teal
+        longHotkeyLabel.frame = NSRect(x: 180, y: y, width: 170, height: 18)
+        content.addSubview(longHotkeyLabel)
 
-        let recordBtn = NSButton(frame: NSRect(x: 250, y: y, width: 100, height: 24))
-        recordBtn.title = "Set Hotkey"
-        recordBtn.bezelStyle = .rounded
-        recordBtn.target = self
-        recordBtn.action = #selector(startHotkeyCapture)
-        content.addSubview(recordBtn)
-        y -= 22
+        longChangeButton = NSButton(frame: NSRect(x: 360, y: y - 3, width: 70, height: 24))
+        longChangeButton.title = "Change"
+        longChangeButton.bezelStyle = .rounded
+        longChangeButton.font = NSFont.systemFont(ofSize: 11)
+        longChangeButton.target = self
+        longChangeButton.action = #selector(startCaptureLong)
+        content.addSubview(longChangeButton)
+        y -= 30
 
-        hotkeyStatusLabel = NSTextField(labelWithString: "")
-        hotkeyStatusLabel.frame = NSRect(x: 40, y: y, width: 350, height: 16)
-        hotkeyStatusLabel.font = NSFont.systemFont(ofSize: 10)
-        hotkeyStatusLabel.textColor = NSColor(red: 0.4, green: 0.54, blue: 0.51, alpha: 1)
-        content.addSubview(hotkeyStatusLabel)
-        y -= 40
+        // Short Recording row
+        let quickLabel = descLabel("Quick Recording:", y: y)
+        content.addSubview(quickLabel)
+
+        let shortDisplay = UserDefaults.standard.string(forKey: "hotkey.short.display") ?? "Hold Right Option"
+        shortHotkeyLabel = NSTextField(labelWithString: shortDisplay)
+        shortHotkeyLabel.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .bold)
+        shortHotkeyLabel.textColor = teal
+        shortHotkeyLabel.frame = NSRect(x: 180, y: y, width: 170, height: 18)
+        content.addSubview(shortHotkeyLabel)
+
+        shortChangeButton = NSButton(frame: NSRect(x: 360, y: y - 3, width: 70, height: 24))
+        shortChangeButton.title = "Change"
+        shortChangeButton.bezelStyle = .rounded
+        shortChangeButton.font = NSFont.systemFont(ofSize: 11)
+        shortChangeButton.target = self
+        shortChangeButton.action = #selector(startCaptureShort)
+        content.addSubview(shortChangeButton)
+        y -= 24
+
+        // Conflict warning label (hidden by default)
+        conflictLabel = NSTextField(labelWithString: "")
+        conflictLabel.font = NSFont.systemFont(ofSize: 11)
+        conflictLabel.textColor = NSColor(red: 1, green: 0.3, blue: 0.3, alpha: 1)
+        conflictLabel.frame = NSRect(x: 40, y: y, width: w - 80, height: 16)
+        conflictLabel.isHidden = true
+        content.addSubview(conflictLabel)
+        y -= 30
 
         // ── Transcription Section ──
         let transcriptionHeader = sectionLabel("Transcription", y: y)
@@ -150,10 +192,250 @@ class PreferencesWindowController: NSObject {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    // MARK: - Hotkey Capture
+
+    @objc private func startCaptureLong() {
+        cancelCapture()
+        capturingLong = true
+        longChangeButton.title = "Press keys..."
+        longChangeButton.isEnabled = false
+        shortChangeButton.isEnabled = false
+        conflictLabel.isHidden = true
+        beginCapture(forLong: true)
+    }
+
+    @objc private func startCaptureShort() {
+        cancelCapture()
+        capturingShort = true
+        shortChangeButton.title = "Press keys..."
+        shortChangeButton.isEnabled = false
+        longChangeButton.isEnabled = false
+        conflictLabel.isHidden = true
+        beginCapture(forLong: false)
+    }
+
+    private func beginCapture(forLong: Bool) {
+        // Local monitors capture events while the Preferences window is key
+        let flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            self?.handleCaptureFlags(event, forLong: forLong)
+            return nil // consume the event
+        }
+        let keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            self?.handleCaptureKeyDown(event, forLong: forLong)
+            return nil // consume the event
+        }
+        captureMonitors = [flagsMonitor as Any, keyMonitor as Any]
+    }
+
+    private func handleCaptureFlags(_ event: NSEvent, forLong: Bool) {
+        let keyCode = event.keyCode
+
+        // Identify which modifier was pressed
+        guard let modName = HotkeyManager.modifierNameForKeyCode[keyCode] else { return }
+
+        let isPress = event.modifierFlags.contains(HotkeyManager.modifierFlagForName[modName]!)
+
+        if isPress {
+            // Modifier pressed — store it and wait to see if a key follows
+            capturedModifierName = modName
+            capturedModifierKeyCodes = HotkeyManager.modifierKeyCodes[modName]
+            capturedModifierFlag = HotkeyManager.modifierFlagForName[modName]
+
+            if forLong {
+                // For long recording: wait 0.5s — if no key arrives, treat as double-tap mode
+                captureModifierTimer?.invalidate()
+                captureModifierTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
+                    self?.finishCaptureLongDoubleTap()
+                }
+            } else {
+                // For short recording: modifier-only is valid immediately
+                finishCaptureShort(keyCode: keyCode)
+            }
+        }
+        // Releases are ignored during capture
+    }
+
+    private func handleCaptureKeyDown(_ event: NSEvent, forLong: Bool) {
+        guard forLong else {
+            // Short recording only accepts modifier-only presses
+            cancelCapture()
+            showConflict("Quick Recording must be a modifier key only (Ctrl, Cmd, Option, Shift)")
+            return
+        }
+
+        // Cancel the modifier-only timer since a key was pressed
+        captureModifierTimer?.invalidate()
+        captureModifierTimer = nil
+
+        guard let modName = capturedModifierName,
+              let modFlag = capturedModifierFlag else {
+            // No modifier was held, press Escape to cancel
+            if event.keyCode == 53 { // Escape
+                cancelCapture()
+            }
+            return
+        }
+
+        // Escape cancels
+        if event.keyCode == 53 {
+            cancelCapture()
+            return
+        }
+
+        // Check for system hotkey conflicts
+        let comboKeyCode = event.keyCode
+        if checkConflict(modName: modName, keyCode: comboKeyCode) {
+            return
+        }
+
+        // Save as combo mode
+        let keyName = keyNameForCode(comboKeyCode)
+        let displayModifier = HotkeyManager.displayNameForModifier[modName] ?? modName.capitalized
+        let display = "\(displayModifier)+\(keyName)"
+
+        let config = LongHotkeyConfig(
+            mode: .combo,
+            keyCodes: HotkeyManager.modifierKeyCodes[modName] ?? [],
+            modFlag: modFlag,
+            comboKeyCode: comboKeyCode,
+            display: display
+        )
+        HotkeyManager.saveLongConfig(config)
+        longHotkeyLabel.stringValue = display
+        hotkeyManager?.reloadConfig()
+        endCapture()
+    }
+
+    private func finishCaptureLongDoubleTap() {
+        guard let modName = capturedModifierName,
+              let modFlag = capturedModifierFlag else {
+            cancelCapture()
+            return
+        }
+
+        let displayModifier = HotkeyManager.displayNameForModifier[modName] ?? modName.capitalized
+        let display = "Double-tap \(displayModifier)"
+
+        let config = LongHotkeyConfig(
+            mode: .doubleTap,
+            keyCodes: HotkeyManager.modifierKeyCodes[modName] ?? [],
+            modFlag: modFlag,
+            comboKeyCode: 0,
+            display: display
+        )
+        HotkeyManager.saveLongConfig(config)
+        longHotkeyLabel.stringValue = display
+        hotkeyManager?.reloadConfig()
+        endCapture()
+    }
+
+    private func finishCaptureShort(keyCode: UInt16) {
+        guard let modName = capturedModifierName,
+              let modFlag = capturedModifierFlag else {
+            cancelCapture()
+            return
+        }
+
+        let isRight = [62, 61, 60, 54].contains(keyCode) // Right Ctrl, Right Opt, Right Shift, Right Cmd
+        let side = isRight ? "Right " : ""
+        let displayModifier = HotkeyManager.displayNameForModifier[modName] ?? modName.capitalized
+        let display = "Hold \(side)\(displayModifier)"
+
+        let config = ShortHotkeyConfig(
+            keyCode: keyCode,
+            modFlag: modFlag,
+            display: display
+        )
+        HotkeyManager.saveShortConfig(config)
+        shortHotkeyLabel.stringValue = display
+        hotkeyManager?.reloadConfig()
+        endCapture()
+    }
+
+    private func cancelCapture() {
+        captureModifierTimer?.invalidate()
+        captureModifierTimer = nil
+        capturedModifierName = nil
+        capturedModifierKeyCodes = nil
+        capturedModifierFlag = nil
+        endCapture()
+    }
+
+    private func endCapture() {
+        for monitor in captureMonitors {
+            NSEvent.removeMonitor(monitor)
+        }
+        captureMonitors.removeAll()
+        captureModifierTimer?.invalidate()
+        captureModifierTimer = nil
+        capturedModifierName = nil
+        capturedModifierKeyCodes = nil
+        capturedModifierFlag = nil
+        capturingLong = false
+        capturingShort = false
+
+        longChangeButton?.title = "Change"
+        longChangeButton?.isEnabled = true
+        shortChangeButton?.title = "Change"
+        shortChangeButton?.isEnabled = true
+    }
+
+    // MARK: - Conflict Detection
+
+    private static let conflictingCombos: [(String, UInt16)] = [
+        ("command", 12),  // Cmd+Q
+        ("command", 13),  // Cmd+W
+        ("command", 4),   // Cmd+H
+        ("command", 46),  // Cmd+M
+        ("command", 48),  // Cmd+Tab
+        ("command", 49),  // Cmd+Space
+    ]
+
+    private static let conflictingShiftCombos: [(String, NSEvent.ModifierFlags, UInt16)] = [
+        ("command", .shift, 20),  // Cmd+Shift+3
+        ("command", .shift, 21),  // Cmd+Shift+4
+        ("command", .shift, 23),  // Cmd+Shift+5
+    ]
+
+    private func checkConflict(modName: String, keyCode: UInt16) -> Bool {
+        for (mod, key) in Self.conflictingCombos {
+            if modName == mod && keyCode == key {
+                let keyName = keyNameForCode(keyCode)
+                let displayMod = HotkeyManager.displayNameForModifier[modName] ?? modName
+                showConflict("Conflicts with system hotkey \(displayMod)+\(keyName)")
+                cancelCapture()
+                return true
+            }
+        }
+        return false
+    }
+
+    private func showConflict(_ message: String) {
+        conflictLabel.stringValue = message
+        conflictLabel.isHidden = false
+    }
+
+    // MARK: - Key Name Lookup
+
+    private func keyNameForCode(_ keyCode: UInt16) -> String {
+        let names: [UInt16: String] = [
+            0: "A", 1: "S", 2: "D", 3: "F", 4: "H", 5: "G", 6: "Z", 7: "X",
+            8: "C", 9: "V", 10: "?", 11: "B", 12: "Q", 13: "W", 14: "E", 15: "R",
+            16: "Y", 17: "T", 18: "1", 19: "2", 20: "3", 21: "4", 22: "6", 23: "5",
+            24: "=", 25: "9", 26: "7", 27: "-", 28: "8", 29: "0", 30: "]", 31: "O",
+            32: "U", 33: "[", 34: "I", 35: "P", 36: "Return", 37: "L", 38: "J",
+            39: "'", 40: "K", 41: ";", 42: "\\", 43: ",", 44: "/", 45: "N", 46: "M",
+            47: ".", 48: "Tab", 49: "Space", 50: "`",
+        ]
+        return names[keyCode] ?? "Key\(keyCode)"
+    }
+
+    // MARK: - Helpers
+
     private func sectionLabel(_ text: String, y: CGFloat) -> NSTextField {
         let label = NSTextField(labelWithString: text)
         label.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .bold)
-        label.textColor = NSColor(red: 0.24, green: 1, blue: 0.85, alpha: 1)
+        label.textColor = teal
         label.frame = NSRect(x: 30, y: y, width: 300, height: 18)
         return label
     }
@@ -164,36 +446,6 @@ class PreferencesWindowController: NSObject {
         label.textColor = NSColor(red: 0.88, green: 0.94, blue: 0.92, alpha: 1)
         label.frame = NSRect(x: 40, y: y, width: 300, height: 18)
         return label
-    }
-
-    @objc private func startHotkeyCapture() {
-        hotkeyField.stringValue = "Press keys..."
-        hotkeyStatusLabel.stringValue = "Press your desired key combination"
-        hotkeyStatusLabel.textColor = NSColor(red: 0.24, green: 1, blue: 0.85, alpha: 1)
-
-        // Listen for the next key event
-        NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
-            guard let self = self else { return event }
-
-            if event.type == .keyDown {
-                let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-                let keyName = self.keyName(for: event.keyCode, modifiers: mods)
-
-                // Check for system conflicts
-                if self.isSystemHotkey(keyCode: event.keyCode, modifiers: mods) {
-                    self.hotkeyStatusLabel.stringValue = "This key combination is used by the system. Choose another."
-                    self.hotkeyStatusLabel.textColor = NSColor(red: 1, green: 0.4, blue: 0.4, alpha: 1)
-                    self.hotkeyField.stringValue = keyName
-                } else {
-                    self.hotkeyField.stringValue = keyName
-                    self.hotkeyStatusLabel.stringValue = "Hotkey set!"
-                    self.hotkeyStatusLabel.textColor = NSColor(red: 0.24, green: 1, blue: 0.85, alpha: 1)
-                    UserDefaults.standard.set(keyName, forKey: "hotkey.longRecord")
-                }
-                return nil // consume the event
-            }
-            return event
-        }
     }
 
     @objc private func languageChanged() {
@@ -211,64 +463,16 @@ class PreferencesWindowController: NSObject {
     }
 
     @objc private func openDashboard() {
-        NSWorkspace.shared.open(URL(string: "https://write-on.app/dashboard/")!)
-    }
-
-    private func keyName(for keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> String {
-        var parts: [String] = []
-        if modifiers.contains(.control) { parts.append("Ctrl") }
-        if modifiers.contains(.option) { parts.append("Opt") }
-        if modifiers.contains(.shift) { parts.append("Shift") }
-        if modifiers.contains(.command) { parts.append("Cmd") }
-
-        let keyNames: [UInt16: String] = [
-            0: "A", 1: "S", 2: "D", 3: "F", 4: "H", 5: "G", 6: "Z", 7: "X",
-            8: "C", 9: "V", 11: "B", 12: "Q", 13: "W", 14: "E", 15: "R",
-            16: "Y", 17: "T", 18: "1", 19: "2", 20: "3", 21: "4", 22: "6",
-            23: "5", 24: "=", 25: "9", 26: "7", 27: "-", 28: "8", 29: "0",
-            30: "]", 31: "O", 32: "U", 33: "[", 34: "I", 35: "P", 36: "Return",
-            37: "L", 38: "J", 39: "'", 40: "K", 41: ";", 42: "\\", 43: ",",
-            44: "/", 45: "N", 46: "M", 47: ".", 48: "Tab", 49: "Space",
-            51: "Delete", 53: "Escape",
-            122: "F1", 120: "F2", 99: "F3", 118: "F4", 96: "F5", 97: "F6",
-            98: "F7", 100: "F8", 101: "F9", 109: "F10", 103: "F11", 111: "F12",
-            123: "Left", 124: "Right", 125: "Down", 126: "Up",
-        ]
-
-        let key = keyNames[keyCode] ?? "Key\(keyCode)"
-        parts.append(key)
-        return parts.joined(separator: "+")
-    }
-
-    private func isSystemHotkey(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> Bool {
-        let cmd = modifiers.contains(.command)
-        let shift = modifiers.contains(.shift)
-
-        // Common macOS system hotkeys
-        if cmd {
-            switch keyCode {
-            case 12: return true  // Cmd+Q (quit)
-            case 13: return true  // Cmd+W (close window)
-            case 4: return true   // Cmd+H (hide)
-            case 46: return true  // Cmd+M (minimize)
-            case 48 where shift: return true // Cmd+Shift+Tab
-            case 48: return true  // Cmd+Tab (app switcher)
-            case 49: return true  // Cmd+Space (Spotlight)
-            default: break
-            }
-        }
-
-        // Cmd+Shift+3/4/5 (screenshots)
-        if cmd && shift && (keyCode == 20 || keyCode == 21 || keyCode == 23) {
-            return true
-        }
-
-        return false
+        let access = SessionManager.shared.accessToken ?? ""
+        let refresh = SessionManager.shared.refreshToken ?? ""
+        let url = "https://write-on.app/dashboard/#access_token=\(access)&refresh_token=\(refresh)&type=bearer"
+        NSWorkspace.shared.open(URL(string: url)!)
     }
 }
 
 extension PreferencesWindowController: NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
+        cancelCapture()
         window = nil
     }
 }

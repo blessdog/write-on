@@ -36,11 +36,12 @@
   .btn-open:hover { background: #2ee0be; }
   .error { color: #ff6b6b; }
   .hint { font-size: 0.8rem; color: #4a6a62; margin-top: 1rem; }
+  .success { color: #3dffd8; }
 </style>
 </head>
 <body>
 <div class="container">
-  <h2 id="heading">Signing you in...</h2>
+  <h2 id="heading">Sign in complete</h2>
   <p id="status">Click the button below to open Write On</p>
   <a id="openBtn" class="btn-open" href="#">Open Write On</a>
   <p class="hint" id="hint"></p>
@@ -64,25 +65,27 @@
   // Build the writeon:// deep link
   var deepLink = 'writeon://auth/callback#' + tokenData;
 
-  // Set the button href
+  // Set the button href — user clicks to open the app
   var btn = document.getElementById('openBtn');
   btn.href = deepLink;
 
-  // Also try automatic redirect via hidden iframe (avoids Safari blocking)
-  var iframe = document.createElement('iframe');
-  iframe.style.display = 'none';
-  iframe.src = deepLink;
-  document.body.appendChild(iframe);
+  // On click, show success message
+  btn.addEventListener('click', function() {
+    document.getElementById('heading').textContent = 'Opening Write On...';
+    document.getElementById('heading').className = 'success';
+    document.getElementById('hint').textContent = 'You can close this tab.';
+  });
 
-  // After a short delay, also try window.location
+  // Single automatic redirect attempt after a short delay
+  // (no iframe — Brave and other browsers block iframe custom-scheme redirects)
   setTimeout(function() {
     window.location.href = deepLink;
-  }, 500);
+  }, 600);
 
-  // Update hint after delay
+  // Show hint after delay in case auto-redirect was blocked
   setTimeout(function() {
-    document.getElementById('hint').textContent = 'If the app opened, you can close this tab.';
-  }, 2000);
+    document.getElementById('hint').textContent = "Didn't open? Click the button above.";
+  }, 2500);
 })();
 </script>
 </body>

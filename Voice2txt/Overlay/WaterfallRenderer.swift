@@ -26,6 +26,11 @@ class WaterfallRenderer: NSObject, MTKViewDelegate {
     private let viewWidth: Float = 260
     private let viewHeight: Float = 90
 
+    // Brand teal color (0.24, 1.0, 0.85)
+    private let tealR: Float = 0.24
+    private let tealG: Float = 1.0
+    private let tealB: Float = 0.85
+
     func setup(device: MTLDevice, pixelFormat: MTLPixelFormat) {
         self.device = device
         self.commandQueue = device.makeCommandQueue()
@@ -141,14 +146,28 @@ class WaterfallRenderer: NSObject, MTKViewDelegate {
 
     // MARK: - Vertex Building
 
+    // Subtle shadow offsets for waveform lines — just enough contrast
+    private var glowOffsets: [(Float, Float, Float)] {
+        let px: Float = 1.0 / viewWidth * 2.0
+        let py: Float = 1.0 / viewHeight * 2.0
+        return [
+            (0,       py * 2,  0.35),  // below
+            (0,      -py * 2,  0.35),  // above
+            (px * 2,  0,       0.3),   // right
+            (-px * 2, 0,       0.3),   // left
+        ]
+    }
+
     private func buildWaterfallVertices() -> [WaterfallVertex] {
         guard !waveforms.isEmpty else { return [] }
 
-        var vertices: [WaterfallVertex] = []
+        var shadowVertices: [WaterfallVertex] = []
+        var brightVertices: [WaterfallVertex] = []
         let baseY: Float = viewHeight - 10
         let lineSpacing: Float = 4.5
         let maxAmplitude: Float = 30
         let waveWidth: Float = viewWidth - 24
+        let offsets = glowOffsets
 
         for row in stride(from: waveforms.count - 1, through: 0, by: -1) {
             let waveform = waveforms[row]
@@ -158,36 +177,48 @@ class WaterfallRenderer: NSObject, MTKViewDelegate {
             let perspective: Float = 1.0 - frac * 0.4
             let w = waveWidth * perspective
             let xOffset = (viewWidth - w) / 2
-
-            // White lines: bright front, fading back
             let brightness: Float = 1.0 - frac * 0.6
-            let rColor: Float = brightness
-            let gColor: Float = brightness
-            let bColor: Float = brightness
 
+            // Precompute NDC coords for this row
+            var ndcCoords: [(Float, Float)] = []
             for (i, amp) in waveform.enumerated() {
                 let px = xOffset + (Float(i) / Float(max(waveform.count - 1, 1))) * w
                 let dy = amp * maxAmplitude * perspective
-
                 let ndcX = (px / viewWidth) * 2.0 - 1.0
                 let ndcY = 1.0 - ((y - dy) / viewHeight) * 2.0
+                ndcCoords.append((ndcX, ndcY))
+            }
 
-                vertices.append(WaterfallVertex(
+            // Each glow offset produces one complete line strip
+            for (ox, oy, oa) in offsets {
+                for (ndcX, ndcY) in ndcCoords {
+                    shadowVertices.append(WaterfallVertex(
+                        px: ndcX + ox, py: ndcY + oy,
+                        r: 0, g: 0, b: 0, a: oa
+                    ))
+                }
+            }
+
+            // Bright line strip — teal scaled by brightness
+            for (ndcX, ndcY) in ndcCoords {
+                brightVertices.append(WaterfallVertex(
                     px: ndcX, py: ndcY,
-                    r: rColor, g: gColor, b: bColor, a: 1.0
+                    r: tealR * brightness, g: tealG * brightness, b: tealB * brightness, a: 1.0
                 ))
             }
         }
 
-        return vertices
+        return shadowVertices + brightVertices
     }
 
     private func buildTranscribingVertices() -> [WaterfallVertex] {
-        var vertices: [WaterfallVertex] = []
+        var shadowVertices: [WaterfallVertex] = []
+        var brightVertices: [WaterfallVertex] = []
         let baseY: Float = viewHeight - 10
         let lineSpacing: Float = 4.5
         let waveWidth: Float = viewWidth - 24
         let t = Float(frameCount) * 0.05
+        let offsets = glowOffsets
 
         let rowCount = min(8, numLines)
         for row in stride(from: rowCount - 1, through: 0, by: -1) {
@@ -195,20 +226,35 @@ class WaterfallRenderer: NSObject, MTKViewDelegate {
             let y = baseY - Float(row) * lineSpacing
             let alpha: Float = 1.0 - frac * 0.7
 
+            // Precompute NDC coords for this row
+            var ndcCoords: [(Float, Float)] = []
             for i in 0..<wavePoints {
                 let px: Float = 12 + (Float(i) / Float(wavePoints - 1)) * waveWidth
                 let dy = sin(t + Float(i) * 0.3 + Float(row) * 0.5) * 3 * alpha
-
                 let ndcX = (px / viewWidth) * 2.0 - 1.0
                 let ndcY = 1.0 - ((y + dy) / viewHeight) * 2.0
+                ndcCoords.append((ndcX, ndcY))
+            }
 
-                vertices.append(WaterfallVertex(
+            // Each glow offset produces one complete line strip
+            for (ox, oy, oa) in offsets {
+                for (ndcX, ndcY) in ndcCoords {
+                    shadowVertices.append(WaterfallVertex(
+                        px: ndcX + ox, py: ndcY + oy,
+                        r: 0, g: 0, b: 0, a: oa
+                    ))
+                }
+            }
+
+            // Bright line strip — teal scaled by alpha
+            for (ndcX, ndcY) in ndcCoords {
+                brightVertices.append(WaterfallVertex(
                     px: ndcX, py: ndcY,
-                    r: alpha, g: alpha, b: alpha, a: 1.0
+                    r: tealR * alpha, g: tealG * alpha, b: tealB * alpha, a: 1.0
                 ))
             }
         }
 
-        return vertices
+        return shadowVertices + brightVertices
     }
 }

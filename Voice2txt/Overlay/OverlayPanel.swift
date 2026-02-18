@@ -35,11 +35,7 @@ class OverlayPanel: NSPanel {
 
         if newIndex != currentScreenIndex {
             currentScreenIndex = newIndex
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.3
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                self.animator().setFrameOrigin(positionForScreen(screen))
-            }
+            setFrameOrigin(positionForScreen(screen))
         }
     }
 

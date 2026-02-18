@@ -5,9 +5,24 @@ import Sparkle
 
 private let log = OSLog(subsystem: "com.writeon.app", category: "general")
 
+private let logFileHandle: FileHandle? = {
+    let dir = NSHomeDirectory() + "/Library/Caches/com.writeon.app"
+    try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+    let path = dir + "/writeon.log"
+    if !FileManager.default.fileExists(atPath: path) {
+        FileManager.default.createFile(atPath: path, contents: nil)
+    }
+    return FileHandle(forWritingAtPath: path)
+}()
+
 func v2log(_ message: String) {
     os_log("%{public}@", log: log, type: .default, message)
     print(message)
+    let ts = ISO8601DateFormatter().string(from: Date())
+    if let data = "[\(ts)] \(message)\n".data(using: .utf8) {
+        logFileHandle?.seekToEndOfFile()
+        logFileHandle?.write(data)
+    }
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -65,6 +80,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             configureWebSocket()
             if !didFinishLaunching {
                 finishLaunching()
+            } else {
+                // Re-login after sign-out: restart hotkeys (stopped during sign-out)
+                hotkeyManager.start()
             }
             refreshUserStatus()
             showOnboardingIfNeeded()
@@ -125,8 +143,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         clipboardManager.checkAccessibility()
 
         v2log("Write On ready.")
-        v2log("  Double-tap Ctrl   → start long recording (Ctrl to stop)")
-        v2log("  Hold Right Option → short recording (release to stop)")
+        v2log("  \(hotkeyManager.longConfig.display) → start long recording (tap again to stop)")
+        v2log("  \(hotkeyManager.shortConfig.display) → short recording (release to stop)")
         v2log("  Ctrl+V            → paste last transcript")
     }
 
@@ -263,6 +281,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func showPreferences() {
         if preferencesWindowController == nil {
             preferencesWindowController = PreferencesWindowController()
+            preferencesWindowController?.hotkeyManager = hotkeyManager
         }
         preferencesWindowController?.showWindow()
     }
@@ -299,6 +318,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 await MainActor.run {
                     self.cachedUserStatus = status
                     self.rebuildMenu()
+
+                    // Proactively warn if free tier is exhausted
+                    if !status.isPro {
+                        let limit = status.monthlyLimitMinutes ?? 15
+                        if status.usedMinutes >= limit {
+                            v2log("Free tier exhausted on login (\(status.usageDescription))")
+                            self.showRateLimitAlert()
+                        }
+                    }
                 }
             } catch {
                 v2log("Failed to fetch user status: \(error)")
@@ -365,6 +393,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Overlay Mouse Tracking
 
     private func startMouseTracking() {
+        guard UserDefaults.standard.bool(forKey: "overlay.followMouse") else { return }
         mouseFollowTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             self?.overlayPanel.followMouse()
         }
@@ -382,7 +411,11 @@ extension AppDelegate: LoginWindowControllerDelegate {
     func loginWindowDidAuthenticate(session: AuthSession) {
         SessionManager.shared.saveSession(session)
         configureWebSocket()
-        finishLaunching()
+        if !didFinishLaunching {
+            finishLaunching()
+        } else {
+            hotkeyManager.start()
+        }
         refreshUserStatus()
         showOnboardingIfNeeded()
         v2log("Signed in as \(session.email)")
@@ -399,6 +432,16 @@ extension AppDelegate: HotkeyManagerDelegate {
     func hotkeyManagerDidStartRecording(mode: RecordingMode) {
         guard appState.isIdle else { return }
 
+        // Block recording if free tier is exhausted
+        if let status = cachedUserStatus, !status.isPro {
+            let limit = status.monthlyLimitMinutes ?? 15
+            if status.usedMinutes >= limit {
+                v2log("Recording blocked — free tier limit reached (\(status.usageDescription))")
+                showRateLimitAlert()
+                return
+            }
+        }
+
         appState.transition(to: .recording(mode))
         frontmostAppTracker.saveFrontmostApp()
         soundFeedback.playStartSound()
@@ -412,6 +455,8 @@ extension AppDelegate: HotkeyManagerDelegate {
                 let token = try await SessionManager.shared.getValidToken()
                 await MainActor.run {
                     self.deepgramWebSocket.authToken = token
+                    // Always pick up the latest language setting (may have changed in Preferences)
+                    self.deepgramWebSocket.language = LanguageManager.shared.currentLanguage
                     self.deepgramWebSocket.connect()
                     self.audioCaptureManager.preferredDeviceID = AudioDeviceID(UserDefaults.standard.integer(forKey: "audio.inputDeviceID"))
                     self.audioCaptureManager.startCapture()
@@ -492,18 +537,31 @@ extension AppDelegate: DeepgramWebSocketDelegate {
         appState.transition(to: .idle)
 
         guard !transcript.isEmpty else {
-            v2log("(no speech detected)")
+            let overLimit: Bool = {
+                guard let status = cachedUserStatus, !status.isPro else { return false }
+                let limit = status.monthlyLimitMinutes ?? 15
+                return status.usedMinutes >= limit
+            }()
+            if deepgramWebSocket.wasRateLimited || overLimit {
+                v2log("Rate limited — showing upgrade prompt")
+                showRateLimitAlert()
+            } else {
+                v2log("(no speech detected)")
+            }
             return
         }
 
+        // Prepend a space so the pasted text doesn't jam against existing text
+        let pasteText = " " + transcript
+
         // Store in encrypted history
         TranscriptHistory.shared.addTranscript(transcript)
-        clipboardManager.storeTranscript(transcript)
+        clipboardManager.storeTranscript(pasteText)
         rebuildMenu()
 
         // Reactivate the app the user was in, then paste
         frontmostAppTracker.reactivateSavedApp()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [self] in
             clipboardManager.pasteStoredTranscript()
         }
 
@@ -549,5 +607,9 @@ extension AppDelegate: WelcomeWindowControllerDelegate {
         welcomeWindowController = nil
         flashStatusItem()
         v2log("Onboarding complete — menu bar icon flashed")
+    }
+
+    func welcomeWindowDidRequestPreferences() {
+        showPreferences()
     }
 }

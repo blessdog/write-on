@@ -39,7 +39,7 @@ class ClipboardManager {
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
 
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) { [self] in
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.03) { [self] in
             let down = CGEvent(keyboardEventSource: src, virtualKey: 9, keyDown: true)
             down?.flags = .maskCommand
             down?.post(tap: .cgSessionEventTap)
@@ -47,7 +47,7 @@ class ClipboardManager {
             up?.flags = .maskCommand
             up?.post(tap: .cgSessionEventTap)
 
-            DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) {
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) {
                 pasteboard.clearContents()
                 if savedItems.isEmpty { return }
                 let item = NSPasteboardItem()

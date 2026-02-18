@@ -23,13 +23,16 @@ class DeepgramWebSocket {
     var language: String = "en"
 
     private var webSocketTask: URLSessionWebSocketTask?
-    private var urlSession: URLSession?
+    private lazy var urlSession: URLSession = URLSession(configuration: .default)
     private var keepAliveTimer: Timer?
     private var isConnected = false
     private var reconnectAttempts = 0
     private let maxReconnectAttempts = 3
     private var pendingAudioChunks: [Data] = []
     private var shouldReconnect = false
+    private var didReceiveAnyResult = false
+    private(set) var wasRateLimited = false
+    private var finalizeTimeoutWork: DispatchWorkItem?
 
     func connect() {
         let baseURL: String
@@ -49,7 +52,7 @@ class DeepgramWebSocket {
             URLQueryItem(name: "sample_rate", value: "16000"),
             URLQueryItem(name: "channels", value: "1"),
             URLQueryItem(name: "model", value: "nova-3"),
-            URLQueryItem(name: "interim_results", value: "false"),
+            URLQueryItem(name: "interim_results", value: "true"),
             URLQueryItem(name: "smart_format", value: "true"),
             URLQueryItem(name: "paragraphs", value: "true"),
             URLQueryItem(name: "language", value: language),
@@ -58,15 +61,18 @@ class DeepgramWebSocket {
         var request = URLRequest(url: components.url!)
         request.setValue(authHeader, forHTTPHeaderField: "Authorization")
 
-        let session = URLSession(configuration: .default)
-        self.urlSession = session
+        // Cancel any pending finalize timeout from a previous session
+        finalizeTimeoutWork?.cancel()
+        finalizeTimeoutWork = nil
 
-        let task = session.webSocketTask(with: request)
+        let task = urlSession.webSocketTask(with: request)
         self.webSocketTask = task
         task.resume()
         isConnected = true
         reconnectAttempts = 0
         shouldReconnect = true
+        didReceiveAnyResult = false
+        wasRateLimited = false
 
         receiveMessage()
 
@@ -93,7 +99,14 @@ class DeepgramWebSocket {
 
     func finalize() {
         shouldReconnect = false
-        guard isConnected else { return }
+
+        // If never connected, fire close immediately so app doesn't hang
+        guard isConnected else {
+            DispatchQueue.main.async {
+                self.delegate?.deepgramWebSocketDidClose(self)
+            }
+            return
+        }
 
         let finalizeMsg = #"{"type":"Finalize"}"#
         webSocketTask?.send(.string(finalizeMsg)) { [weak self] error in
@@ -107,6 +120,20 @@ class DeepgramWebSocket {
                 }
             }
         }
+
+        // Safety timeout — if server doesn't close within 5s, force close
+        let timeoutWork = DispatchWorkItem { [weak self] in
+            guard let self = self, self.isConnected else { return }
+            v2log("WebSocket finalize timeout — forcing close")
+            self.isConnected = false
+            self.keepAliveTimer?.invalidate()
+            self.keepAliveTimer = nil
+            self.webSocketTask?.cancel(with: .normalClosure, reason: nil)
+            self.webSocketTask = nil
+            self.delegate?.deepgramWebSocketDidClose(self)
+        }
+        finalizeTimeoutWork = timeoutWork
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: timeoutWork)
     }
 
     func disconnect() {
@@ -117,8 +144,6 @@ class DeepgramWebSocket {
         pendingAudioChunks.removeAll()
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
         webSocketTask = nil
-        urlSession?.invalidateAndCancel()
-        urlSession = nil
     }
 
     private func attemptReconnect() {
@@ -132,7 +157,7 @@ class DeepgramWebSocket {
         reconnectAttempts += 1
         print("WebSocket reconnecting (attempt \(reconnectAttempts)/\(maxReconnectAttempts))...")
 
-        DispatchQueue.global().asyncAfter(deadline: .now() + 1.5) { [weak self] in
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) { [weak self] in
             guard let self = self, self.shouldReconnect else { return }
             self.connect()
 
@@ -179,6 +204,16 @@ class DeepgramWebSocket {
                 if nsError.code != 57 {
                     print("WebSocket receive error: \(error)")
                 }
+
+                // Detect HTTP 429 (rate limit) from WebSocket upgrade rejection
+                // URLSession reports this as error code 2 (invalidServerResponse) in POSIXErrorCode domain
+                // or the closeCode on the task itself
+                let closeCode = self.webSocketTask?.closeCode ?? .invalid
+                if closeCode.rawValue == 429 || nsError.code == 429 ||
+                   (nsError.domain == "NSPOSIXErrorDomain" && !self.didReceiveAnyResult && self.reconnectAttempts >= self.maxReconnectAttempts - 1) {
+                    self.wasRateLimited = true
+                }
+
                 DispatchQueue.main.async {
                     self.keepAliveTimer?.invalidate()
                     self.keepAliveTimer = nil
@@ -200,9 +235,26 @@ class DeepgramWebSocket {
             return
         }
 
-        guard let type = json["type"] as? String, type == "Results" else {
+        let type = json["type"] as? String ?? ""
+
+        // Rate limit error from proxy
+        if type == "Error" || type == "error" {
+            let message = json["message"] as? String ?? json["error"] as? String ?? "Unknown error"
+            let statusCode = json["status"] as? Int ?? json["code"] as? Int ?? 0
+            if statusCode == 429 || message.lowercased().contains("limit") || message.lowercased().contains("quota") {
+                wasRateLimited = true
+                DispatchQueue.main.async {
+                    self.delegate?.deepgramWebSocketDidReceiveRateLimitError(self, message: message)
+                }
+            } else if statusCode == 401 || statusCode == 403 || message.lowercased().contains("auth") {
+                DispatchQueue.main.async {
+                    self.delegate?.deepgramWebSocketDidReceiveAuthError(self)
+                }
+            }
             return
         }
+
+        guard type == "Results" else { return }
 
         guard let channel = json["channel"] as? [String: Any],
               let alternatives = channel["alternatives"] as? [[String: Any]],
@@ -212,6 +264,7 @@ class DeepgramWebSocket {
         }
 
         let isFinal = json["is_final"] as? Bool ?? false
+        didReceiveAnyResult = true
 
         if !transcript.isEmpty {
             DispatchQueue.main.async {

@@ -5,6 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Write On — Voice to text, instantly</title>
 <meta name="description" content="Write On is a tiny, fast macOS app that turns your voice into text. Push to talk, release, paste. No bloat, no cloud dependency, pure delight.">
+<meta property="og:title" content="Write On — Voice to text, instantly">
+<meta property="og:description" content="A tiny, fast macOS app that turns your voice into text. Push to talk, release, paste.">
+<meta property="og:image" content="https://write-on.app/og-image.jpg">
+<meta property="og:url" content="https://write-on.app/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Write On">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://write-on.app/og-image.jpg">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500;600&display=swap');
 
@@ -234,48 +242,6 @@
     border-radius: 3px;
   }
 
-  /* ── Comparison ── */
-  .comparison {
-    padding: 4rem 2rem 6rem;
-    max-width: 900px;
-    margin: 0 auto;
-  }
-
-  .compare-table {
-    width: 100%;
-    margin-top: 1.5rem;
-    border-collapse: collapse;
-    font-family: var(--mono);
-    font-size: 0.85rem;
-  }
-
-  .compare-table th {
-    text-align: left;
-    padding: 0.8rem 1rem;
-    color: var(--text-dim);
-    font-weight: 400;
-    border-bottom: 1px solid rgba(61, 255, 216, 0.15);
-  }
-
-  .compare-table th:last-child {
-    color: var(--cyan);
-    font-weight: 700;
-  }
-
-  .compare-table td {
-    padding: 0.7rem 1rem;
-    border-bottom: 1px solid rgba(61, 255, 216, 0.05);
-    color: var(--text-dim);
-  }
-
-  .compare-table td:last-child {
-    color: var(--text);
-  }
-
-  .compare-table .highlight {
-    color: var(--cyan);
-  }
-
   /* ── Footer ── */
   .footer {
     padding: 4rem 2rem;
@@ -311,8 +277,6 @@
   @media (max-width: 600px) {
     .features-grid { grid-template-columns: 1fr; gap: 2rem; }
     .step { gap: 0.8rem; }
-    .compare-table { font-size: 0.75rem; }
-    .compare-table th, .compare-table td { padding: 0.5rem; }
   }
 </style>
 </head>
@@ -352,28 +316,16 @@
   <div class="section-label">Why Write On</div>
   <div class="features-grid">
     <div class="feature">
-      <h3>Push to talk</h3>
-      <p>Double-tap Ctrl or hold Right Option. Speak. Release. Your words appear where your cursor is. That's it.</p>
+      <h3>Talk, don't type</h3>
+      <p>Double-tap Ctrl to start recording. Speak naturally. Tap Ctrl again to stop. Your words appear wherever your cursor is.</p>
     </div>
     <div class="feature">
-      <h3>Zero bloat</h3>
-      <p>Under 300KB. No Electron, no Python runtime, no 11GB model downloads. Pure native Swift and Metal.</p>
+      <h3>Always ready, never in the way</h3>
+      <p>Write On lives in your menu bar. No windows to manage, no dock icon. It's there when you need it, invisible when you don't.</p>
     </div>
     <div class="feature">
-      <h3>Your clipboard is sacred</h3>
-      <p>Transcripts are stored internally. Ctrl+V pastes them. Your clipboard is never hijacked.</p>
-    </div>
-    <div class="feature">
-      <h3>Retro waveform visualizer</h3>
-      <p>A Metal-rendered waterfall of cascading waveforms. You'll know it's listening. You'll want to keep talking.</p>
-    </div>
-    <div class="feature">
-      <h3>Menu bar agent</h3>
-      <p>Lives in your menu bar. No dock icon, no windows. It's there when you need it, invisible when you don't.</p>
-    </div>
-    <div class="feature">
-      <h3>Private by design</h3>
-      <p>Zero-knowledge architecture. Transcripts encrypted on-device, never stored on our servers. Notarized by Apple. No telemetry.</p>
+      <h3>Private by default</h3>
+      <p>Your transcripts stay on your device, encrypted. We never see or store your words.</p>
     </div>
   </div>
 </section>
@@ -384,63 +336,17 @@
   <div class="steps">
     <div class="step">
       <div class="step-num">1</div>
-      <div class="step-text">Double-tap <kbd>Ctrl</kbd> to start recording. The waveform overlay appears.</div>
+      <div class="step-text">Double-tap <kbd>Ctrl</kbd> to start recording</div>
     </div>
     <div class="step">
       <div class="step-num">2</div>
-      <div class="step-text">Speak naturally. Your words stream to Deepgram's Nova-3 model in real time.</div>
+      <div class="step-text">Speak naturally — your words appear in real time</div>
     </div>
     <div class="step">
       <div class="step-num">3</div>
-      <div class="step-text">Tap <kbd>Ctrl</kbd> again to stop. Transcript is ready.</div>
-    </div>
-    <div class="step">
-      <div class="step-num">4</div>
-      <div class="step-text">Press <kbd>Ctrl</kbd>+<kbd>V</kbd> anywhere to paste. Your clipboard stays untouched.</div>
+      <div class="step-text">Tap <kbd>Ctrl</kbd> to stop — text pastes automatically</div>
     </div>
   </div>
-</section>
-
-<!-- ── Comparison ── -->
-<section class="comparison">
-  <div class="section-label">Software with taste</div>
-  <table class="compare-table">
-    <tr>
-      <th></th>
-      <th>The other guys</th>
-      <th>Write On</th>
-    </tr>
-    <tr>
-      <td>Size</td>
-      <td>2 &ndash; 11 GB</td>
-      <td class="highlight">~300 KB</td>
-    </tr>
-    <tr>
-      <td>Install time</td>
-      <td>10 &ndash; 30 min</td>
-      <td class="highlight">Drag &amp; drop</td>
-    </tr>
-    <tr>
-      <td>Dependencies</td>
-      <td>Python, Whisper, etc.</td>
-      <td class="highlight">None</td>
-    </tr>
-    <tr>
-      <td>Accuracy</td>
-      <td>Good</td>
-      <td class="highlight">Excellent (Nova-3)</td>
-    </tr>
-    <tr>
-      <td>Latency</td>
-      <td>Seconds</td>
-      <td class="highlight">Real-time</td>
-    </tr>
-    <tr>
-      <td>Delight factor</td>
-      <td>&mdash;</td>
-      <td class="highlight">&#10024;</td>
-    </tr>
-  </table>
 </section>
 
 <!-- ── Footer ── -->
@@ -573,6 +479,22 @@
     heroContent.style.opacity = fade;
     canvas.style.opacity = 0.3 + fade * 0.7;
   });
+})();
+
+// Handle OAuth errors redirected to the root URL
+(function() {
+  var params = new URLSearchParams(window.location.search);
+  var error = params.get('error');
+  if (!error) return;
+
+  var desc = (params.get('error_description') || 'Something went wrong').replace(/\+/g, ' ');
+  var banner = document.createElement('div');
+  banner.style.cssText = 'position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:200;background:rgba(255,107,107,0.12);border:1px solid rgba(255,107,107,0.3);color:#ff6b6b;padding:0.8rem 1.5rem;border-radius:8px;font-family:var(--mono);font-size:0.85rem;max-width:500px;text-align:center;backdrop-filter:blur(8px);';
+  banner.innerHTML = 'Sign-in failed: ' + desc + '<br><a href="/login/" style="color:#3dffd8;text-decoration:underline;font-size:0.8rem;">Try again</a>';
+  document.body.appendChild(banner);
+
+  // Clean up URL
+  window.history.replaceState({}, '', '/');
 })();
 </script>
 

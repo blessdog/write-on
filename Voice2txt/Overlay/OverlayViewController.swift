@@ -51,14 +51,51 @@ class OverlayViewController: NSViewController {
         }
         renderer.setup(device: device, pixelFormat: mtkView.colorPixelFormat)
 
-        // Transcript label at the bottom
-        transcriptLabel = NSTextField(frame: NSRect(x: 4, y: 0, width: panelW - 8, height: labelH))
+        // Shadow labels — stacked black text with increasing blur to create
+        // a dark halo that's opaque right behind the text and fades outward.
+        // No boxes, no backgrounds — just shadow.
+        let labelFrame = NSRect(x: 4, y: 0, width: panelW - 8, height: labelH)
+        let shadowConfigs: [(CGFloat, CGFloat)] = [
+            // (blur radius, alpha) — tight and dark first, then wider and lighter
+            (2,  1.0),   // near-zero blur, full black — dark right behind text
+            (4,  1.0),   // tight glow
+            (8,  0.9),   // medium spread
+            (16, 0.7),   // wide fade
+            (26, 0.4),   // outer haze
+        ]
+        for (i, config) in shadowConfigs.enumerated() {
+            let shadowLabel = NSTextField(frame: labelFrame)
+            shadowLabel.isEditable = false
+            shadowLabel.isSelectable = false
+            shadowLabel.isBezeled = false
+            shadowLabel.drawsBackground = false
+            shadowLabel.backgroundColor = .clear
+            shadowLabel.textColor = NSColor.black.withAlphaComponent(config.1)
+            shadowLabel.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+            shadowLabel.alignment = .center
+            shadowLabel.lineBreakMode = .byTruncatingHead
+            shadowLabel.maximumNumberOfLines = 2
+            shadowLabel.cell?.truncatesLastVisibleLine = true
+            shadowLabel.stringValue = ""
+            shadowLabel.tag = 100 + i
+
+            let s = NSShadow()
+            s.shadowColor = NSColor.black.withAlphaComponent(config.1)
+            s.shadowOffset = NSSize(width: 0, height: 0)
+            s.shadowBlurRadius = config.0
+            shadowLabel.shadow = s
+
+            container.addSubview(shadowLabel)
+        }
+
+        // Transcript label on top — teal text
+        transcriptLabel = NSTextField(frame: labelFrame)
         transcriptLabel.isEditable = false
         transcriptLabel.isSelectable = false
         transcriptLabel.isBezeled = false
         transcriptLabel.drawsBackground = false
         transcriptLabel.backgroundColor = .clear
-        transcriptLabel.textColor = .white
+        transcriptLabel.textColor = NSColor(red: 0.24, green: 1, blue: 0.85, alpha: 1)
         transcriptLabel.font = NSFont.systemFont(ofSize: 11, weight: .medium)
         transcriptLabel.alignment = .center
         transcriptLabel.lineBreakMode = .byTruncatingHead
@@ -73,5 +110,10 @@ class OverlayViewController: NSViewController {
 
     func updateTranscript(_ text: String) {
         transcriptLabel.stringValue = text
+        for i in 0..<5 {
+            if let shadow = view.subviews.first(where: { $0.tag == 100 + i }) as? NSTextField {
+                shadow.stringValue = text
+            }
+        }
     }
 }

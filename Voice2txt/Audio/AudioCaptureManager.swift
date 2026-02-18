@@ -121,7 +121,7 @@ class AudioCaptureManager {
             return
         }
 
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
             guard let self = self else { return }
 
             let ratio = self.targetSampleRate / inputFormat.sampleRate
