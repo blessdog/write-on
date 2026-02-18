@@ -5,14 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pricing — Write On</title>
 <meta name="description" content="Simple, transparent pricing. Start free, upgrade when you're ready.">
-<meta property="og:title" content="Pricing — Write On">
-<meta property="og:description" content="Simple, transparent pricing. Start free, upgrade when you're ready.">
-<meta property="og:image" content="https://write-on.app/og-image.jpg">
-<meta property="og:url" content="https://write-on.app/pricing/">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="Write On">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:image" content="https://write-on.app/og-image.jpg">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500;600&display=swap');
@@ -677,13 +669,15 @@
     btn.textContent = 'Redirecting';
 
     try {
+      // Get session, then force refresh to ensure token is valid
       const { data: { session } } = await supabase.auth.getSession();
-
       if (!session) {
-        // Not logged in — redirect to signup first
         window.location.href = '/signup/?redirect=pricing&plan=' + plan;
         return;
       }
+
+      const { data: refreshData } = await supabase.auth.refreshSession();
+      const activeSession = refreshData?.session || session;
 
       let priceId;
       if (plan === 'pro') {
@@ -692,11 +686,21 @@
         priceId = PRICES.lifetime;
       }
 
-      const { data, error } = await supabase.functions.invoke('create-checkout', {
-        body: { priceId: priceId }
+      // Call edge function directly with fresh token
+      const res = await fetch(SUPABASE_URL + '/functions/v1/create-checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + activeSession.access_token,
+        },
+        body: JSON.stringify({ priceId: priceId }),
       });
 
-      if (error) throw error;
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Checkout failed');
+      }
 
       if (data && data.url) {
         window.location.href = data.url;
