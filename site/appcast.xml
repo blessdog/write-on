@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Write On</title>
+    <link>https://write-on.app/appcast.xml</link>
+    <description>Most recent changes with links to updates.</description>
+    <language>en</language>
+    <item>
+      <title>Version 2.0.0</title>
+      <description><![CDATA[
+        <h2>Write On 2.0 — Accounts, History, and More</h2>
+        <ul>
+          <li>User accounts with email/password login</li>
+          <li>Free tier (15 min/month) and Pro subscriptions</li>
+          <li>Transcript history — access your last 20 transcripts from the menu bar</li>
+          <li>Encrypted on-device storage for all transcripts</li>
+          <li>20+ language support</li>
+          <li>Connection resilience — auto-reconnect if connection drops</li>
+          <li>Overlay follows mouse across monitors</li>
+          <li>Preferences window with customizable hotkeys</li>
+          <li>Paragraph formatting for longer dictations</li>
+        </ul>
+      ]]></description>
+      <pubDate>Mon, 16 Feb 2026 00:00:00 +0000</pubDate>
+      <sparkle:version>2.0.0</sparkle:version>
+      <sparkle:shortVersionString>2.0.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+      <enclosure
+        url="https://github.com/blessdog/write-on/releases/download/v2.0.0/WriteOn.dmg"
+        sparkle:edSignature="CTkKfhCQSGvkPrbWnC2oAHUqY7kJKd/tcUDCJCRhdemce0RIQwapfaWQlRDMCQW176lpkkLKYJLXN4EGYV9TDA=="
+        length="1632624"
+        type="application/octet-stream"
+      />
+    </item>
+  </channel>
+</rss>

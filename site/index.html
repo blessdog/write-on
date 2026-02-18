@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Write On — Voice to text, instantly</title>
+<meta name="description" content="Write On is a tiny, fast macOS app that turns your voice into text. Push to talk, release, paste. No bloat, no cloud dependency, pure delight.">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500;600&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0a0a0f;
+    --bg-subtle: #0e0e16;
+    --cyan: #3dffd8;
+    --cyan-dim: #1a8a6e;
+    --cyan-glow: rgba(61, 255, 216, 0.15);
+    --text: #e0f0ec;
+    --text-dim: #6a8a82;
+    --mono: 'Space Mono', 'SF Mono', 'Fira Code', monospace;
+    --sans: 'Inter', -apple-system, system-ui, sans-serif;
+  }
+
+  html {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    overflow-x: hidden;
+  }
+
+  /* ── Hero ── */
+  .hero {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+  }
+
+  .hero canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    image-rendering: pixelated;
+  }
+
+  .hero-content {
+    position: relative;
+    z-index: 1;
+    text-align: center;
+    max-width: 680px;
+  }
+
+  .logo-mark {
+    font-family: var(--mono);
+    font-size: clamp(3.2rem, 8vw, 5.5rem);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    margin-bottom: 0.3em;
+    text-shadow:
+      0 0 40px var(--cyan-glow),
+      0 0 80px rgba(61, 255, 216, 0.08);
+  }
+
+  .logo-mark span {
+    color: var(--cyan);
+  }
+
+  .tagline {
+    font-family: var(--mono);
+    font-size: clamp(0.85rem, 2vw, 1.05rem);
+    color: var(--text-dim);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 2.5rem;
+  }
+
+  .cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6em;
+    font-family: var(--mono);
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--bg);
+    background: var(--cyan);
+    border: none;
+    padding: 0.9em 2em;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.2s;
+    position: relative;
+    clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+  }
+
+  .cta:hover {
+    background: #fff;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 40px var(--cyan-glow);
+  }
+
+  .cta-sub {
+    display: block;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    margin-top: 0.8rem;
+    letter-spacing: 0.05em;
+  }
+
+  /* ── Scroll indicator ── */
+  .scroll-hint {
+    position: absolute;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1;
+    opacity: 0.3;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  .scroll-hint svg {
+    width: 24px;
+    height: 24px;
+    stroke: var(--cyan);
+    fill: none;
+    stroke-width: 2;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.2; transform: translateX(-50%) translateY(0); }
+    50% { opacity: 0.5; transform: translateX(-50%) translateY(6px); }
+  }
+
+  /* ── Features ── */
+  .features {
+    padding: 6rem 2rem;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  .section-label {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--cyan-dim);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 2rem;
+  }
+
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 2.5rem;
+  }
+
+  .feature {
+    border-left: 2px solid var(--cyan-dim);
+    padding-left: 1.2rem;
+  }
+
+  .feature h3 {
+    font-family: var(--mono);
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 0.5rem;
+  }
+
+  .feature p {
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: var(--text-dim);
+  }
+
+  /* ── How it works ── */
+  .how {
+    padding: 4rem 2rem 6rem;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin-top: 1rem;
+  }
+
+  .step {
+    display: flex;
+    align-items: baseline;
+    gap: 1.2rem;
+    padding: 1.2rem 0;
+    border-bottom: 1px solid rgba(61, 255, 216, 0.08);
+  }
+
+  .step-num {
+    font-family: var(--mono);
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--cyan-dim);
+    min-width: 2.5rem;
+    line-height: 1;
+  }
+
+  .step-text {
+    font-family: var(--mono);
+    font-size: 0.95rem;
+    color: var(--text);
+    line-height: 1.5;
+  }
+
+  .step-text kbd {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    background: rgba(61, 255, 216, 0.1);
+    color: var(--cyan);
+    border: 1px solid rgba(61, 255, 216, 0.2);
+    padding: 0.15em 0.5em;
+    border-radius: 3px;
+  }
+
+  /* ── Comparison ── */
+  .comparison {
+    padding: 4rem 2rem 6rem;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  .compare-table {
+    width: 100%;
+    margin-top: 1.5rem;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 0.85rem;
+  }
+
+  .compare-table th {
+    text-align: left;
+    padding: 0.8rem 1rem;
+    color: var(--text-dim);
+    font-weight: 400;
+    border-bottom: 1px solid rgba(61, 255, 216, 0.15);
+  }
+
+  .compare-table th:last-child {
+    color: var(--cyan);
+    font-weight: 700;
+  }
+
+  .compare-table td {
+    padding: 0.7rem 1rem;
+    border-bottom: 1px solid rgba(61, 255, 216, 0.05);
+    color: var(--text-dim);
+  }
+
+  .compare-table td:last-child {
+    color: var(--text);
+  }
+
+  .compare-table .highlight {
+    color: var(--cyan);
+  }
+
+  /* ── Footer ── */
+  .footer {
+    padding: 4rem 2rem;
+    text-align: center;
+    border-top: 1px solid rgba(61, 255, 216, 0.08);
+  }
+
+  .footer-logo {
+    font-family: var(--mono);
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 0.5rem;
+  }
+
+  .footer-logo span {
+    color: var(--cyan);
+  }
+
+  .footer p {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    margin-top: 0.3rem;
+  }
+
+  .footer .cta {
+    margin-top: 1.5rem;
+    font-size: 0.85rem;
+    padding: 0.7em 1.6em;
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 600px) {
+    .features-grid { grid-template-columns: 1fr; gap: 2rem; }
+    .step { gap: 0.8rem; }
+    .compare-table { font-size: 0.75rem; }
+    .compare-table th, .compare-table td { padding: 0.5rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Nav ── -->
+<nav style="position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:1rem 2rem;background:rgba(10,10,15,0.85);backdrop-filter:blur(12px);border-bottom:1px solid rgba(61,255,216,0.08);">
+  <a href="/" style="font-family:var(--mono);font-size:1.1rem;font-weight:700;color:var(--text);text-decoration:none;">Write<span style="color:var(--cyan);">On</span></a>
+  <div style="display:flex;gap:1.5rem;align-items:center;">
+    <a href="/pricing/" style="font-family:var(--mono);font-size:0.8rem;color:var(--text-dim);text-decoration:none;letter-spacing:0.05em;">Pricing</a>
+    <a href="/login/" style="font-family:var(--mono);font-size:0.8rem;color:var(--cyan);text-decoration:none;letter-spacing:0.05em;">Sign In</a>
+  </div>
+</nav>
+
+<!-- ── Hero ── -->
+<section class="hero">
+  <canvas id="waveCanvas"></canvas>
+  <div class="hero-content">
+    <h1 class="logo-mark">Write<span>On</span></h1>
+    <p class="tagline">Voice to text, instantly</p>
+    <a href="/signup/" class="cta" style="margin-bottom:0.5rem;">
+      Get Started Free
+    </a>
+    <a href="https://github.com/blessdog/write-on/releases/latest/download/WriteOn.dmg" class="cta" style="background:transparent;color:var(--cyan);border:1px solid var(--cyan-dim);font-size:0.85rem;padding:0.6em 1.5em;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download for macOS
+    </a>
+    <span class="cta-sub">Free tier &middot; 15 min/month &middot; No credit card required</span>
+  </div>
+  <div class="scroll-hint">
+    <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+  </div>
+</section>
+
+<!-- ── Features ── -->
+<section class="features">
+  <div class="section-label">Why Write On</div>
+  <div class="features-grid">
+    <div class="feature">
+      <h3>Push to talk</h3>
+      <p>Double-tap Ctrl or hold Right Option. Speak. Release. Your words appear where your cursor is. That's it.</p>
+    </div>
+    <div class="feature">
+      <h3>Zero bloat</h3>
+      <p>Under 300KB. No Electron, no Python runtime, no 11GB model downloads. Pure native Swift and Metal.</p>
+    </div>
+    <div class="feature">
+      <h3>Your clipboard is sacred</h3>
+      <p>Transcripts are stored internally. Ctrl+V pastes them. Your clipboard is never hijacked.</p>
+    </div>
+    <div class="feature">
+      <h3>Retro waveform visualizer</h3>
+      <p>A Metal-rendered waterfall of cascading waveforms. You'll know it's listening. You'll want to keep talking.</p>
+    </div>
+    <div class="feature">
+      <h3>Menu bar agent</h3>
+      <p>Lives in your menu bar. No dock icon, no windows. It's there when you need it, invisible when you don't.</p>
+    </div>
+    <div class="feature">
+      <h3>Private by design</h3>
+      <p>Zero-knowledge architecture. Transcripts encrypted on-device, never stored on our servers. Notarized by Apple. No telemetry.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── How it works ── -->
+<section class="how">
+  <div class="section-label">How it works</div>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-text">Double-tap <kbd>Ctrl</kbd> to start recording. The waveform overlay appears.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-text">Speak naturally. Your words stream to Deepgram's Nova-3 model in real time.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-text">Tap <kbd>Ctrl</kbd> again to stop. Transcript is ready.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-text">Press <kbd>Ctrl</kbd>+<kbd>V</kbd> anywhere to paste. Your clipboard stays untouched.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Comparison ── -->
+<section class="comparison">
+  <div class="section-label">Software with taste</div>
+  <table class="compare-table">
+    <tr>
+      <th></th>
+      <th>The other guys</th>
+      <th>Write On</th>
+    </tr>
+    <tr>
+      <td>Size</td>
+      <td>2 &ndash; 11 GB</td>
+      <td class="highlight">~300 KB</td>
+    </tr>
+    <tr>
+      <td>Install time</td>
+      <td>10 &ndash; 30 min</td>
+      <td class="highlight">Drag &amp; drop</td>
+    </tr>
+    <tr>
+      <td>Dependencies</td>
+      <td>Python, Whisper, etc.</td>
+      <td class="highlight">None</td>
+    </tr>
+    <tr>
+      <td>Accuracy</td>
+      <td>Good</td>
+      <td class="highlight">Excellent (Nova-3)</td>
+    </tr>
+    <tr>
+      <td>Latency</td>
+      <td>Seconds</td>
+      <td class="highlight">Real-time</td>
+    </tr>
+    <tr>
+      <td>Delight factor</td>
+      <td>&mdash;</td>
+      <td class="highlight">&#10024;</td>
+    </tr>
+  </table>
+</section>
+
+<!-- ── Footer ── -->
+<footer class="footer">
+  <div class="footer-logo">Write<span>On</span></div>
+  <p>Made with taste. Shipped with care.</p>
+  <a href="/signup/" class="cta">
+    Get Started Free
+  </a>
+  <p style="margin-top: 1.5rem;">15 free minutes/month &middot; No credit card required &middot; <a href="/pricing/" style="color: var(--cyan); text-decoration: none;">See pricing</a></p>
+</footer>
+
+<!-- ── Waveform Canvas ── -->
+<script>
+(function() {
+  const canvas = document.getElementById('waveCanvas');
+  const ctx = canvas.getContext('2d');
+
+  // Pixel scaling for retro feel
+  const PIXEL_SCALE = 2;
+  let W, H;
+
+  function resize() {
+    W = Math.floor(canvas.clientWidth / PIXEL_SCALE);
+    H = Math.floor(canvas.clientHeight / PIXEL_SCALE);
+    canvas.width = W;
+    canvas.height = H;
+    ctx.imageSmoothingEnabled = false;
+  }
+
+  resize();
+  window.addEventListener('resize', resize);
+
+  // Waveform parameters
+  const NUM_LINES = 18;
+  const POINTS = 120;
+
+  // Noise function (simple Perlin-ish)
+  function noise(x, y, t) {
+    return (
+      Math.sin(x * 0.08 + t * 0.4 + y * 0.3) * 0.4 +
+      Math.sin(x * 0.15 + t * 0.7 - y * 0.5) * 0.25 +
+      Math.sin(x * 0.25 + t * 1.1 + y * 0.2) * 0.2 +
+      Math.sin(x * 0.4 + t * 0.3) * 0.15
+    );
+  }
+
+  let time = 0;
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+
+    const centerY = H * 0.48;
+    const totalHeight = H * 0.55;
+    const lineSpacing = totalHeight / NUM_LINES;
+    const marginX = W * 0.12;
+    const waveWidth = W - marginX * 2;
+
+    for (let row = 0; row < NUM_LINES; row++) {
+      const rowT = row / (NUM_LINES - 1);
+      const baseY = centerY - totalHeight / 2 + row * lineSpacing;
+
+      // Perspective: lines closer to center are taller
+      const centerDist = Math.abs(rowT - 0.45);
+      const amplitude = (1 - centerDist * 1.5) * lineSpacing * 1.8;
+
+      // Alpha: front lines brighter
+      const alpha = 0.15 + (1 - rowT) * 0.55;
+
+      // Cyan color with varying brightness
+      const brightness = 0.5 + (1 - centerDist) * 0.5;
+      const r = Math.floor(30 * brightness);
+      const g = Math.floor(255 * brightness);
+      const b = Math.floor(216 * brightness);
+
+      ctx.beginPath();
+      ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+      ctx.lineWidth = 1;
+
+      for (let i = 0; i <= POINTS; i++) {
+        const t = i / POINTS;
+        const x = marginX + t * waveWidth;
+
+        // Envelope: taper at edges
+        const envelope = Math.pow(Math.sin(t * Math.PI), 0.7);
+
+        // Waveform displacement
+        const n = noise(i, row, time + row * 0.5);
+        const y = baseY - n * amplitude * envelope;
+
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+
+      ctx.stroke();
+
+      // Glow line (thicker, more transparent)
+      if (alpha > 0.3) {
+        ctx.beginPath();
+        ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha * 0.2})`;
+        ctx.lineWidth = 3;
+
+        for (let i = 0; i <= POINTS; i++) {
+          const t = i / POINTS;
+          const x = marginX + t * waveWidth;
+          const envelope = Math.pow(Math.sin(t * Math.PI), 0.7);
+          const n = noise(i, row, time + row * 0.5);
+          const y = baseY - n * amplitude * envelope;
+
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+
+        ctx.stroke();
+      }
+    }
+
+    time += 0.012;
+    requestAnimationFrame(draw);
+  }
+
+  draw();
+
+  // Fade hero on scroll
+  const hero = document.querySelector('.hero');
+  const heroContent = document.querySelector('.hero-content');
+  window.addEventListener('scroll', () => {
+    const scrollY = window.scrollY;
+    const fade = Math.max(0, 1 - scrollY / (window.innerHeight * 0.5));
+    heroContent.style.opacity = fade;
+    canvas.style.opacity = 0.3 + fade * 0.7;
+  });
+})();
+</script>
+
+</body>
+</html>

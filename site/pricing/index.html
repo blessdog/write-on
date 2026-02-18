@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pricing — Write On</title>
+<meta name="description" content="Simple, transparent pricing. Start free, upgrade when you're ready.">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500;600&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0a0a0f;
+    --bg-subtle: #0e0e16;
+    --bg-card: #11111a;
+    --bg-card-hover: #151522;
+    --cyan: #3dffd8;
+    --cyan-dim: #1a8a6e;
+    --cyan-glow: rgba(61, 255, 216, 0.15);
+    --text: #e0f0ec;
+    --text-dim: #6a8a82;
+    --text-muted: #3a5a52;
+    --mono: 'Space Mono', 'SF Mono', 'Fira Code', monospace;
+    --sans: 'Inter', -apple-system, system-ui, sans-serif;
+    --border: rgba(61, 255, 216, 0.1);
+    --border-bright: rgba(61, 255, 216, 0.25);
+  }
+
+  html {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  /* ── Nav ── */
+  .nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.2rem 2rem;
+    max-width: 1100px;
+    margin: 0 auto;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .nav-logo {
+    font-family: var(--mono);
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  .nav-logo span {
+    color: var(--cyan);
+  }
+
+  .nav-links {
+    display: flex;
+    align-items: center;
+    gap: 1.8rem;
+    list-style: none;
+  }
+
+  .nav-links a {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    text-decoration: none;
+    letter-spacing: 0.04em;
+    transition: color 0.2s;
+  }
+
+  .nav-links a:hover {
+    color: var(--cyan);
+  }
+
+  .nav-links a.active {
+    color: var(--cyan);
+  }
+
+  /* ── Page Header ── */
+  .page-header {
+    text-align: center;
+    padding: 4rem 2rem 1rem;
+    max-width: 700px;
+    margin: 0 auto;
+  }
+
+  .page-header h1 {
+    font-family: var(--mono);
+    font-size: clamp(2rem, 5vw, 3rem);
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 0.8rem;
+  }
+
+  .page-header h1 span {
+    color: var(--cyan);
+  }
+
+  .page-header p {
+    font-size: 1.05rem;
+    color: var(--text-dim);
+    line-height: 1.6;
+    max-width: 500px;
+    margin: 0 auto;
+  }
+
+  /* ── Billing Toggle ── */
+  .billing-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    margin: 2.5rem auto 0;
+  }
+
+  .billing-toggle label {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: color 0.2s;
+  }
+
+  .billing-toggle label.active {
+    color: var(--cyan);
+  }
+
+  .toggle-track {
+    position: relative;
+    width: 48px;
+    height: 26px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-bright);
+    border-radius: 13px;
+    cursor: pointer;
+    transition: background 0.3s;
+  }
+
+  .toggle-track::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    background: var(--cyan);
+    border-radius: 50%;
+    transition: transform 0.3s;
+  }
+
+  .toggle-track.annual::after {
+    transform: translateX(22px);
+  }
+
+  .save-badge {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--bg);
+    background: var(--cyan);
+    padding: 0.2em 0.5em;
+    border-radius: 3px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+  }
+
+  /* ── Pricing Grid ── */
+  .pricing-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+    max-width: 1000px;
+    margin: 3rem auto 0;
+    padding: 0 2rem;
+    align-items: start;
+  }
+
+  .price-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    padding: 2.5rem 2rem;
+    position: relative;
+    transition: border-color 0.3s, transform 0.2s;
+    clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
+  }
+
+  .price-card:hover {
+    border-color: var(--border-bright);
+    transform: translateY(-4px);
+  }
+
+  .price-card.featured {
+    border-color: var(--cyan-dim);
+    background: linear-gradient(180deg, rgba(61, 255, 216, 0.04) 0%, var(--bg-card) 100%);
+  }
+
+  .price-card.featured::before {
+    content: 'MOST POPULAR';
+    position: absolute;
+    top: 0;
+    right: 0;
+    background: var(--cyan);
+    color: var(--bg);
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    padding: 0.4em 1em 0.4em 0.8em;
+    clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%);
+  }
+
+  .card-tier {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--cyan-dim);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 0.8rem;
+  }
+
+  .card-price {
+    font-family: var(--mono);
+    font-size: 2.8rem;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1;
+    margin-bottom: 0.3rem;
+  }
+
+  .card-price .dollar {
+    font-size: 1.4rem;
+    vertical-align: top;
+    margin-right: 0.05em;
+    color: var(--cyan);
+  }
+
+  .card-interval {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    margin-bottom: 1.5rem;
+  }
+
+  .card-features {
+    list-style: none;
+    margin-bottom: 2rem;
+  }
+
+  .card-features li {
+    font-size: 0.88rem;
+    color: var(--text-dim);
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .card-features li:last-child {
+    border-bottom: none;
+  }
+
+  .card-features li::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    background: var(--cyan-dim);
+    flex-shrink: 0;
+  }
+
+  .card-features li.highlight {
+    color: var(--text);
+  }
+
+  .card-features li.highlight::before {
+    background: var(--cyan);
+  }
+
+  .card-btn {
+    display: block;
+    width: 100%;
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-align: center;
+    padding: 0.9em 1.5em;
+    border: 1px solid var(--cyan-dim);
+    background: transparent;
+    color: var(--cyan);
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.2s;
+    clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+  }
+
+  .card-btn:hover {
+    background: rgba(61, 255, 216, 0.1);
+    border-color: var(--cyan);
+  }
+
+  .card-btn.primary {
+    background: var(--cyan);
+    color: var(--bg);
+    border-color: var(--cyan);
+  }
+
+  .card-btn.primary:hover {
+    background: #fff;
+    box-shadow: 0 4px 30px var(--cyan-glow);
+  }
+
+  /* ── Privacy Banner ── */
+  .privacy-banner {
+    max-width: 700px;
+    margin: 4rem auto 0;
+    padding: 0 2rem;
+    text-align: center;
+  }
+
+  .privacy-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    padding: 2rem 2.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+  }
+
+  .privacy-icon {
+    flex-shrink: 0;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .privacy-icon svg {
+    width: 32px;
+    height: 32px;
+    stroke: var(--cyan);
+    fill: none;
+    stroke-width: 1.5;
+  }
+
+  .privacy-text {
+    text-align: left;
+  }
+
+  .privacy-text h3 {
+    font-family: var(--mono);
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 0.3rem;
+  }
+
+  .privacy-text p {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  /* ── FAQ ── */
+  .faq {
+    max-width: 700px;
+    margin: 4rem auto;
+    padding: 0 2rem 4rem;
+  }
+
+  .faq-label {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--cyan-dim);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 1.5rem;
+  }
+
+  .faq-item {
+    border-bottom: 1px solid var(--border);
+    padding: 1.2rem 0;
+  }
+
+  .faq-item h4 {
+    font-family: var(--mono);
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 0.4rem;
+  }
+
+  .faq-item p {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    padding: 3rem 2rem;
+    text-align: center;
+    border-top: 1px solid var(--border);
+  }
+
+  .footer-logo {
+    font-family: var(--mono);
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 0.3rem;
+  }
+
+  .footer-logo span {
+    color: var(--cyan);
+  }
+
+  .footer p {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+  }
+
+  /* ── Loading state ── */
+  .card-btn.loading {
+    pointer-events: none;
+    opacity: 0.6;
+  }
+
+  .card-btn.loading::after {
+    content: '...';
+    animation: dots 1.2s steps(3, end) infinite;
+  }
+
+  @keyframes dots {
+    0% { content: '.'; }
+    33% { content: '..'; }
+    66% { content: '...'; }
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 820px) {
+    .pricing-grid {
+      grid-template-columns: 1fr;
+      max-width: 420px;
+    }
+    .price-card.featured {
+      order: -1;
+    }
+  }
+
+  @media (max-width: 600px) {
+    .nav {
+      padding: 1rem 1.2rem;
+    }
+    .nav-links {
+      gap: 1rem;
+    }
+    .nav-links a {
+      font-size: 0.7rem;
+    }
+    .privacy-card {
+      flex-direction: column;
+      text-align: center;
+    }
+    .privacy-text {
+      text-align: center;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Nav ── -->
+<nav class="nav">
+  <a href="/" class="nav-logo">Write<span>On</span></a>
+  <ul class="nav-links">
+    <li><a href="/">Home</a></li>
+    <li><a href="/pricing/" class="active">Pricing</a></li>
+    <li><a href="/login/">Sign In</a></li>
+  </ul>
+</nav>
+
+<!-- ── Header ── -->
+<section class="page-header">
+  <h1>Simple, <span>honest</span> pricing</h1>
+  <p>Start free. Upgrade when you need more. No surprises, no hidden fees, no data harvesting.</p>
+</section>
+
+<!-- ── Billing Toggle ── -->
+<div class="billing-toggle">
+  <label id="label-monthly" class="active">Monthly</label>
+  <div class="toggle-track" id="billingToggle" role="switch" aria-checked="false" tabindex="0"></div>
+  <label id="label-annual">Annual</label>
+  <span class="save-badge">SAVE 20%</span>
+</div>
+
+<!-- ── Pricing Cards ── -->
+<div class="pricing-grid">
+
+  <!-- Free -->
+  <div class="price-card">
+    <div class="card-tier">Free</div>
+    <div class="card-price"><span class="dollar">$</span>0</div>
+    <div class="card-interval">forever</div>
+    <ul class="card-features">
+      <li class="highlight">15 minutes / month</li>
+      <li>Push-to-talk transcription</li>
+      <li>Metal waveform visualizer</li>
+      <li>Paste into any app</li>
+      <li>macOS app</li>
+    </ul>
+    <a href="/signup/" class="card-btn">Get Started</a>
+  </div>
+
+  <!-- Pro -->
+  <div class="price-card featured">
+    <div class="card-tier">Pro</div>
+    <div class="card-price" id="pro-price"><span class="dollar">$</span>5</div>
+    <div class="card-interval" id="pro-interval">per month</div>
+    <ul class="card-features">
+      <li class="highlight">Unlimited transcription</li>
+      <li class="highlight">Priority processing</li>
+      <li>Push-to-talk transcription</li>
+      <li>Metal waveform visualizer</li>
+      <li>Paste into any app</li>
+      <li>macOS app</li>
+      <li class="highlight">Priority support</li>
+    </ul>
+    <button class="card-btn primary" id="btn-pro" onclick="handleCheckout('pro')">Subscribe</button>
+  </div>
+
+  <!-- Lifetime -->
+  <div class="price-card">
+    <div class="card-tier">Lifetime</div>
+    <div class="card-price"><span class="dollar">$</span>79</div>
+    <div class="card-interval">one-time payment</div>
+    <ul class="card-features">
+      <li class="highlight">Unlimited transcription</li>
+      <li class="highlight">Unlimited forever</li>
+      <li class="highlight">Priority processing</li>
+      <li>Push-to-talk transcription</li>
+      <li>Metal waveform visualizer</li>
+      <li>Paste into any app</li>
+      <li>macOS app</li>
+      <li class="highlight">Priority support</li>
+    </ul>
+    <button class="card-btn" id="btn-lifetime" onclick="handleCheckout('lifetime')">Buy Lifetime</button>
+  </div>
+
+</div>
+
+<!-- ── Privacy Banner ── -->
+<div class="privacy-banner">
+  <div class="privacy-card">
+    <div class="privacy-icon">
+      <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    </div>
+    <div class="privacy-text">
+      <h3>Zero-knowledge architecture</h3>
+      <p>Your transcripts never touch our servers. Audio is processed in real-time and discarded. We literally cannot read your data, even if we wanted to.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── FAQ ── -->
+<section class="faq">
+  <div class="faq-label">Questions</div>
+  <div class="faq-item">
+    <h4>What counts toward my 15 minutes?</h4>
+    <p>Only active recording time. Pauses, idle time, and editing do not count. The timer resets on the 1st of each month.</p>
+  </div>
+  <div class="faq-item">
+    <h4>Can I switch between monthly and annual?</h4>
+    <p>Yes. You can switch at any time from your dashboard. When switching to annual, you'll receive a prorated credit for your remaining monthly period.</p>
+  </div>
+  <div class="faq-item">
+    <h4>What's included in the Lifetime plan?</h4>
+    <p>Everything in Pro, forever. One payment, no recurring charges. You'll receive all future updates and features at no additional cost.</p>
+  </div>
+  <div class="faq-item">
+    <h4>Do you offer refunds?</h4>
+    <p>Yes. If you're not satisfied within 14 days of purchase, contact us for a full refund. No questions asked.</p>
+  </div>
+</section>
+
+<!-- ── Footer ── -->
+<footer class="footer">
+  <div class="footer-logo">Write<span>On</span></div>
+  <p>Made with taste. Shipped with care.</p>
+</footer>
+
+<script>
+(function() {
+  // ── Supabase init ──
+  const SUPABASE_URL = 'https://oknhmmjpzkujiuhvwnuf.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9rbmhtbWpwemt1aml1aHZ3bnVmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEyODIxOTksImV4cCI6MjA4Njg1ODE5OX0.mWu4uaUQTMS7jutA5_OBxU9H0GhKGRtcJ6Pc2nNWzCw';
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // ── Price IDs ──
+  const PRICES = {
+    pro_monthly: 'price_1T20w7CH0xqEhg9pGUKN3FFM',
+    pro_annual: 'price_1T20wWCH0xqEhg9prkObe94J',
+    lifetime: 'price_1T20wYCH0xqEhg9pMvVZqOYr'
+  };
+
+  // ── Billing toggle ──
+  let isAnnual = false;
+  const toggle = document.getElementById('billingToggle');
+  const labelMonthly = document.getElementById('label-monthly');
+  const labelAnnual = document.getElementById('label-annual');
+  const proPrice = document.getElementById('pro-price');
+  const proInterval = document.getElementById('pro-interval');
+
+  function updateBillingUI() {
+    if (isAnnual) {
+      toggle.classList.add('annual');
+      toggle.setAttribute('aria-checked', 'true');
+      labelMonthly.classList.remove('active');
+      labelAnnual.classList.add('active');
+      proPrice.innerHTML = '<span class="dollar">$</span>4';
+      proInterval.textContent = 'per month, billed annually ($48/yr)';
+    } else {
+      toggle.classList.remove('annual');
+      toggle.setAttribute('aria-checked', 'false');
+      labelMonthly.classList.add('active');
+      labelAnnual.classList.remove('active');
+      proPrice.innerHTML = '<span class="dollar">$</span>5';
+      proInterval.textContent = 'per month';
+    }
+  }
+
+  toggle.addEventListener('click', function() {
+    isAnnual = !isAnnual;
+    updateBillingUI();
+  });
+
+  toggle.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      isAnnual = !isAnnual;
+      updateBillingUI();
+    }
+  });
+
+  labelMonthly.addEventListener('click', function() {
+    isAnnual = false;
+    updateBillingUI();
+  });
+
+  labelAnnual.addEventListener('click', function() {
+    isAnnual = true;
+    updateBillingUI();
+  });
+
+  // ── Checkout handler ──
+  window.handleCheckout = async function(plan) {
+    const btn = document.getElementById('btn-' + plan);
+    btn.classList.add('loading');
+    btn.textContent = 'Redirecting';
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session) {
+        // Not logged in — redirect to signup first
+        window.location.href = '/signup/?redirect=pricing&plan=' + plan;
+        return;
+      }
+
+      let priceId;
+      if (plan === 'pro') {
+        priceId = isAnnual ? PRICES.pro_annual : PRICES.pro_monthly;
+      } else if (plan === 'lifetime') {
+        priceId = PRICES.lifetime;
+      }
+
+      const { data, error } = await supabase.functions.invoke('create-checkout', {
+        body: { priceId: priceId }
+      });
+
+      if (error) throw error;
+
+      if (data && data.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error('No checkout URL returned');
+      }
+
+    } catch (err) {
+      console.error('Checkout error:', err);
+      btn.classList.remove('loading');
+      btn.textContent = plan === 'lifetime' ? 'Buy Lifetime' : 'Subscribe';
+      alert('Something went wrong. Please try again or contact support.');
+    }
+  };
+
+  // ── Update nav if logged in ──
+  async function updateNav() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      const signInLink = document.querySelector('.nav-links a[href="/login/"]');
+      if (signInLink) {
+        signInLink.href = '/dashboard/';
+        signInLink.textContent = 'Dashboard';
+      }
+    }
+  }
+
+  updateNav();
+})();
+</script>
+
+</body>
+</html>

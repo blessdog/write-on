@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Signing in — Write On</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a0f;
+    color: #e0f0ec;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    text-align: center;
+  }
+  .container { padding: 2rem; max-width: 400px; }
+  h2 { font-size: 1.3rem; margin-bottom: 1rem; }
+  p { font-size: 0.9rem; color: #6a8a82; margin-bottom: 0.5rem; }
+  .btn-open {
+    display: inline-block;
+    margin-top: 1.5rem;
+    padding: 14px 40px;
+    background: #3dffd8;
+    color: #0a0a0f;
+    font-size: 1rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.2s;
+  }
+  .btn-open:hover { background: #2ee0be; }
+  .error { color: #ff6b6b; }
+  .hint { font-size: 0.8rem; color: #4a6a62; margin-top: 1rem; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h2 id="heading">Signing you in...</h2>
+  <p id="status">Click the button below to open Write On</p>
+  <a id="openBtn" class="btn-open" href="#">Open Write On</a>
+  <p class="hint" id="hint"></p>
+</div>
+<script>
+(function() {
+  // Supabase sends tokens in the URL hash fragment
+  var hash = window.location.hash.substring(1);
+  // Also check query params (some flows use these)
+  var query = window.location.search.substring(1);
+  var tokenData = hash || query;
+
+  if (!tokenData) {
+    document.getElementById('heading').textContent = 'Sign-in Error';
+    document.getElementById('status').className = 'error';
+    document.getElementById('status').textContent = 'No authentication data received.';
+    document.getElementById('openBtn').style.display = 'none';
+    return;
+  }
+
+  // Build the writeon:// deep link
+  var deepLink = 'writeon://auth/callback#' + tokenData;
+
+  // Set the button href
+  var btn = document.getElementById('openBtn');
+  btn.href = deepLink;
+
+  // Also try automatic redirect via hidden iframe (avoids Safari blocking)
+  var iframe = document.createElement('iframe');
+  iframe.style.display = 'none';
+  iframe.src = deepLink;
+  document.body.appendChild(iframe);
+
+  // After a short delay, also try window.location
+  setTimeout(function() {
+    window.location.href = deepLink;
+  }, 500);
+
+  // Update hint after delay
+  setTimeout(function() {
+    document.getElementById('hint').textContent = 'If the app opened, you can close this tab.';
+  }, 2000);
+})();
+</script>
+</body>
+</html>

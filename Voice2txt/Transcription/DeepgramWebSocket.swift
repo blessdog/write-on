@@ -4,24 +4,46 @@ protocol DeepgramWebSocketDelegate: AnyObject {
     func deepgramWebSocket(_ ws: DeepgramWebSocket, didReceiveTranscript text: String, isFinal: Bool)
     func deepgramWebSocketDidClose(_ ws: DeepgramWebSocket)
     func deepgramWebSocket(_ ws: DeepgramWebSocket, didEncounterError error: Error)
+    func deepgramWebSocketDidReceiveAuthError(_ ws: DeepgramWebSocket)
+    func deepgramWebSocketDidReceiveRateLimitError(_ ws: DeepgramWebSocket, message: String)
+}
+
+// Default implementations for new delegate methods
+extension DeepgramWebSocketDelegate {
+    func deepgramWebSocketDidReceiveAuthError(_ ws: DeepgramWebSocket) {}
+    func deepgramWebSocketDidReceiveRateLimitError(_ ws: DeepgramWebSocket, message: String) {}
 }
 
 class DeepgramWebSocket {
     weak var delegate: DeepgramWebSocketDelegate?
-    var apiKey: String = ""
+
+    // Auth: either Supabase JWT (via proxy) or direct Deepgram API key
+    var authToken: String = ""
+    var useProxy: Bool = true
+    var language: String = "en"
 
     private var webSocketTask: URLSessionWebSocketTask?
     private var urlSession: URLSession?
     private var keepAliveTimer: Timer?
     private var isConnected = false
+    private var reconnectAttempts = 0
+    private let maxReconnectAttempts = 3
+    private var pendingAudioChunks: [Data] = []
+    private var shouldReconnect = false
 
     func connect() {
-        guard !apiKey.isEmpty else {
-            print("DeepgramWebSocket: No API key")
-            return
+        let baseURL: String
+        let authHeader: String
+
+        if useProxy {
+            baseURL = Configuration.proxyWSURL
+            authHeader = "Bearer \(authToken)"
+        } else {
+            baseURL = "wss://api.deepgram.com/v1/listen"
+            authHeader = "Token \(authToken)"
         }
 
-        var components = URLComponents(string: "wss://api.deepgram.com/v1/listen")!
+        var components = URLComponents(string: baseURL)!
         components.queryItems = [
             URLQueryItem(name: "encoding", value: "linear16"),
             URLQueryItem(name: "sample_rate", value: "16000"),
@@ -29,10 +51,12 @@ class DeepgramWebSocket {
             URLQueryItem(name: "model", value: "nova-3"),
             URLQueryItem(name: "interim_results", value: "false"),
             URLQueryItem(name: "smart_format", value: "true"),
+            URLQueryItem(name: "paragraphs", value: "true"),
+            URLQueryItem(name: "language", value: language),
         ]
 
         var request = URLRequest(url: components.url!)
-        request.setValue("Token \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(authHeader, forHTTPHeaderField: "Authorization")
 
         let session = URLSession(configuration: .default)
         self.urlSession = session
@@ -41,6 +65,8 @@ class DeepgramWebSocket {
         self.webSocketTask = task
         task.resume()
         isConnected = true
+        reconnectAttempts = 0
+        shouldReconnect = true
 
         receiveMessage()
 
@@ -52,7 +78,12 @@ class DeepgramWebSocket {
     }
 
     func sendAudio(_ data: Data) {
-        guard isConnected else { return }
+        guard isConnected else {
+            if shouldReconnect {
+                pendingAudioChunks.append(data)
+            }
+            return
+        }
         webSocketTask?.send(.data(data)) { error in
             if let error = error {
                 print("WebSocket send error: \(error)")
@@ -61,6 +92,7 @@ class DeepgramWebSocket {
     }
 
     func finalize() {
+        shouldReconnect = false
         guard isConnected else { return }
 
         let finalizeMsg = #"{"type":"Finalize"}"#
@@ -78,13 +110,39 @@ class DeepgramWebSocket {
     }
 
     func disconnect() {
+        shouldReconnect = false
         keepAliveTimer?.invalidate()
         keepAliveTimer = nil
         isConnected = false
+        pendingAudioChunks.removeAll()
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
         webSocketTask = nil
         urlSession?.invalidateAndCancel()
         urlSession = nil
+    }
+
+    private func attemptReconnect() {
+        guard shouldReconnect, reconnectAttempts < maxReconnectAttempts else {
+            DispatchQueue.main.async {
+                self.delegate?.deepgramWebSocketDidClose(self)
+            }
+            return
+        }
+
+        reconnectAttempts += 1
+        print("WebSocket reconnecting (attempt \(reconnectAttempts)/\(maxReconnectAttempts))...")
+
+        DispatchQueue.global().asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self = self, self.shouldReconnect else { return }
+            self.connect()
+
+            // Send any buffered audio
+            let buffered = self.pendingAudioChunks
+            self.pendingAudioChunks.removeAll()
+            for chunk in buffered {
+                self.sendAudio(chunk)
+            }
+        }
     }
 
     private func sendKeepAlive() {
@@ -125,7 +183,12 @@ class DeepgramWebSocket {
                     self.keepAliveTimer?.invalidate()
                     self.keepAliveTimer = nil
                     self.isConnected = false
-                    self.delegate?.deepgramWebSocketDidClose(self)
+
+                    if self.shouldReconnect && self.reconnectAttempts < self.maxReconnectAttempts {
+                        self.attemptReconnect()
+                    } else {
+                        self.delegate?.deepgramWebSocketDidClose(self)
+                    }
                 }
             }
         }
