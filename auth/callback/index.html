@@ -64,14 +64,17 @@
   var btn = document.getElementById('openBtn');
   btn.href = deepLink;
 
-  // When user clicks the button, show success message
+  // When user clicks the button, redirect to homepage after a short delay
   btn.addEventListener('click', function() {
     document.getElementById('heading').textContent = 'Sign-in complete!';
     document.getElementById('heading').className = 'success';
-    document.getElementById('status').textContent = 'You can close this tab and return to Write On.';
+    document.getElementById('status').textContent = 'Redirecting...';
     document.getElementById('status').className = 'success';
     btn.style.display = 'none';
     document.getElementById('hint').textContent = '';
+    setTimeout(function() {
+      window.location.href = 'https://write-on.app/';
+    }, 1500);
   });
 
   // Try automatic redirect
