@@ -751,11 +751,21 @@
         manageBtn.disabled = true;
 
         try {
-          const { data, error } = await supabase.functions.invoke('create-portal-session', {
-            body: { customerId: stripeCustomerId }
+          const { data: refreshData } = await supabase.auth.refreshSession();
+          const { data: { session } } = await supabase.auth.getSession();
+          const activeSession = refreshData?.session || session;
+
+          const res = await fetch(SUPABASE_URL + '/functions/v1/create-portal-session', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + activeSession.access_token,
+            },
+            body: JSON.stringify({}),
           });
 
-          if (error) throw error;
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Portal failed');
 
           if (data && data.url) {
             window.location.href = data.url;
