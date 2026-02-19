@@ -6,6 +6,31 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 3.0.0</title>
+      <description><![CDATA[
+        <h2>Write On 3.0 — Universal Binary, Bluetooth-Safe Audio</h2>
+        <ul>
+          <li>Universal Binary — runs natively on Apple Silicon and Intel Macs</li>
+          <li>Now supports macOS 12 (Monterey) and later</li>
+          <li>Replaced Metal rendering with lightweight Core Animation overlay</li>
+          <li>Bluetooth-safe audio — automatically uses built-in mic, headphones stay in music mode</li>
+          <li>AES-256-GCM encrypted transcript history (auto-migrates from v2.x)</li>
+          <li>Audio ring buffer captures first words during connection</li>
+          <li>Improved waveform visualization with noise gate tuning</li>
+        </ul>
+      ]]></description>
+      <pubDate>Wed, 19 Feb 2026 00:00:00 +0000</pubDate>
+      <sparkle:version>300</sparkle:version>
+      <sparkle:shortVersionString>3.0.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
+      <enclosure
+        url="https://github.com/blessdog/write-on/releases/download/v3.0.0/WriteOn.dmg"
+        sparkle:edSignature="zT+kWcHk7wAHte/EJQAOI/VjZWZXaAk/H0GiM2Sr1m/0e0ty4XLj7Cdo+ZpgSeZpyP3exwA20R0ZhC9Rht5mCg=="
+        length="1812272"
+        type="application/octet-stream"
+      />
+    </item>
+    <item>
       <title>Version 2.1.0</title>
       <description><![CDATA[
         <h2>Write On 2.1 — Getting Started Dashboard & Payments</h2>
