@@ -41,9 +41,9 @@
 </head>
 <body>
 <div class="container">
-  <h2 id="heading">Sign in complete</h2>
-  <p id="status">Click the button below to open Write On</p>
-  <a id="openBtn" class="btn-open" href="#">Open Write On</a>
+  <h2 id="heading" class="success">Sign in complete</h2>
+  <p id="status">You can close this tab.</p>
+  <a id="openBtn" class="btn-open" href="#" style="display:none;">Open Write On</a>
   <p class="hint" id="hint"></p>
 </div>
 <script>
@@ -65,27 +65,19 @@
   // Build the writeon:// deep link
   var deepLink = 'writeon://auth/callback#' + tokenData;
 
-  // Set the button href — user clicks to open the app
   var btn = document.getElementById('openBtn');
   btn.href = deepLink;
 
-  // On click, show success message
-  btn.addEventListener('click', function() {
-    document.getElementById('heading').textContent = 'Opening Write On...';
-    document.getElementById('heading').className = 'success';
-    document.getElementById('hint').textContent = 'You can close this tab.';
-  });
-
-  // Single automatic redirect attempt after a short delay
-  // (no iframe — Brave and other browsers block iframe custom-scheme redirects)
+  // Auto-redirect to the app
   setTimeout(function() {
     window.location.href = deepLink;
-  }, 600);
+  }, 300);
 
-  // Show hint after delay in case auto-redirect was blocked
+  // Show fallback button after a delay in case auto-redirect was blocked
   setTimeout(function() {
-    document.getElementById('hint').textContent = "Didn't open? Click the button above.";
-  }, 2500);
+    btn.style.display = 'inline-block';
+    document.getElementById('status').textContent = "Didn't open automatically? Click below.";
+  }, 3000);
 })();
 </script>
 </body>

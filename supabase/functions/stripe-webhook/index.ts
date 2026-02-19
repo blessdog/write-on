@@ -56,13 +56,18 @@ serve(async (req) => {
       const sub = event.data.object as Stripe.Subscription;
       const customerId = sub.customer as string;
 
-      // Find user by stripe_customer_id
+      // Find user by stripe_customer_id and only downgrade if it matches the tracked subscription
       const { data: profiles } = await supabase
         .from("profiles")
-        .select("id")
+        .select("id, stripe_subscription_id")
         .eq("stripe_customer_id", customerId);
 
       if (profiles && profiles.length > 0) {
+        const profile = profiles[0];
+        if (profile.stripe_subscription_id && profile.stripe_subscription_id !== sub.id) {
+          break;
+        }
+
         await supabase
           .from("profiles")
           .update({
@@ -71,7 +76,7 @@ serve(async (req) => {
             subscription_expires_at: null,
             monthly_minutes_limit: 15,
           })
-          .eq("id", profiles[0].id);
+          .eq("id", profile.id);
       }
       break;
     }
@@ -80,12 +85,19 @@ serve(async (req) => {
       const sub = event.data.object as Stripe.Subscription;
       const customerId = sub.customer as string;
 
+      // Only process events for the user's tracked subscription — ignore stale/incomplete ones
       const { data: profiles } = await supabase
         .from("profiles")
-        .select("id")
+        .select("id, stripe_subscription_id")
         .eq("stripe_customer_id", customerId);
 
       if (profiles && profiles.length > 0) {
+        const profile = profiles[0];
+        // Skip if this event is for a different subscription than the one we're tracking
+        if (profile.stripe_subscription_id && profile.stripe_subscription_id !== sub.id) {
+          break;
+        }
+
         const isActive = sub.status === "active" || sub.status === "trialing";
         await supabase
           .from("profiles")
@@ -94,7 +106,7 @@ serve(async (req) => {
             subscription_expires_at: new Date(sub.current_period_end * 1000).toISOString(),
             monthly_minutes_limit: isActive ? 999999 : 15,
           })
-          .eq("id", profiles[0].id);
+          .eq("id", profile.id);
       }
       break;
     }
