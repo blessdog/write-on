@@ -37,7 +37,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let frontmostAppTracker = FrontmostAppTracker()
     private var overlayPanel: OverlayPanel!
     private var overlayViewController: OverlayViewController!
-    private var waterfallRenderer: WaterfallRenderer!
     private let soundFeedback = SoundFeedback()
 
     private let updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
@@ -50,6 +49,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var oauthHandled = false
     private var didFinishLaunching = false
 
+    // Audio ring buffer: captures audio while WebSocket connects
+    private var audioBuffer = Data()
+    private var isBufferingAudio = false
+    private let audioBufferLock = NSLock()
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
             v2log("Received URL: \(url.absoluteString.prefix(300))")
@@ -129,8 +132,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeyManager.delegate = self
         audioCaptureManager.delegate = self
 
-        waterfallRenderer = WaterfallRenderer()
-        overlayViewController = OverlayViewController(renderer: waterfallRenderer)
+        overlayViewController = OverlayViewController()
         overlayPanel = OverlayPanel()
         overlayPanel.contentViewController = overlayViewController
 
@@ -449,26 +451,59 @@ extension AppDelegate: HotkeyManagerDelegate {
         clipboardManager.resetStreaming()
         overlayViewController.updateTranscript("")
 
-        // Get a valid token before connecting
+        // Setup ring buffer before starting audio
+        audioBufferLock.lock()
+        audioBuffer = Data()
+        isBufferingAudio = true
+        audioBufferLock.unlock()
+
+        // Show overlay immediately (main thread)
+        overlayViewController.waterfall.reset()
+        overlayPanel.showOnMouseScreen()
+        overlayViewController.waterfall.startAnimation()
+        startMouseTracking()
+        setStatusIcon("mic.badge.plus")
+
+        // Start audio on background thread — Bluetooth devices can block engine.start()
+        let deviceID = AudioDeviceID(UserDefaults.standard.integer(forKey: "audio.inputDeviceID"))
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.audioCaptureManager.preferredDeviceID = deviceID
+            self.audioCaptureManager.startCapture()
+        }
+
+        // Connect WebSocket in background, then flush buffered audio
         Task {
             do {
                 let token = try await SessionManager.shared.getValidToken()
+                v2log("Token acquired, connecting WebSocket...")
                 await MainActor.run {
                     self.deepgramWebSocket.authToken = token
-                    // Always pick up the latest language setting (may have changed in Preferences)
                     self.deepgramWebSocket.language = LanguageManager.shared.currentLanguage
                     self.deepgramWebSocket.connect()
-                    self.audioCaptureManager.preferredDeviceID = AudioDeviceID(UserDefaults.standard.integer(forKey: "audio.inputDeviceID"))
-                    self.audioCaptureManager.startCapture()
 
-                    self.waterfallRenderer.reset()
-                    self.overlayPanel.showOnMouseScreen()
-                    self.startMouseTracking()
-                    self.setStatusIcon("mic.badge.plus")
+                    // Flush buffered audio to WebSocket
+                    self.audioBufferLock.lock()
+                    let buffered = self.audioBuffer
+                    self.audioBuffer = Data()
+                    self.isBufferingAudio = false
+                    self.audioBufferLock.unlock()
+
+                    v2log("WebSocket connected, flushing \(buffered.count) buffered bytes")
+                    if !buffered.isEmpty {
+                        self.deepgramWebSocket.sendAudio(buffered)
+                    }
                 }
             } catch {
                 await MainActor.run {
                     v2log("Auth error: \(error)")
+                    self.audioCaptureManager.stopCapture()
+                    self.audioBufferLock.lock()
+                    self.audioBuffer = Data()
+                    self.isBufferingAudio = false
+                    self.audioBufferLock.unlock()
+                    self.overlayViewController.waterfall.stopAnimation()
+                    self.overlayPanel.hide()
+                    self.stopMouseTracking()
                     self.appState.transition(to: .idle)
                     self.soundFeedback.playStopSound()
                 }
@@ -482,11 +517,18 @@ extension AppDelegate: HotkeyManagerDelegate {
         guard appState.isRecording else { return }
 
         appState.transition(to: .transcribing)
-        audioCaptureManager.stopCapture()
+        audioBufferLock.lock()
+        audioBuffer = Data()
+        isBufferingAudio = false
+        audioBufferLock.unlock()
+        // Stop audio on background thread — engine.stop() can block with Bluetooth
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.audioCaptureManager.stopCapture()
+        }
         soundFeedback.playStopSound()
         stopMouseTracking()
 
-        waterfallRenderer.setTranscribing(true)
+        overlayViewController.waterfall.setTranscribing(true)
         setStatusIcon("ellipsis.circle")
 
         deepgramWebSocket.finalize()
@@ -503,11 +545,21 @@ extension AppDelegate: HotkeyManagerDelegate {
 
 extension AppDelegate: AudioCaptureManagerDelegate {
     func audioCaptureManager(_ manager: AudioCaptureManager, didCapturePCMData data: Data) {
-        deepgramWebSocket.sendAudio(data)
+        // Buffer audio while WebSocket is connecting, send directly once connected
+        audioBufferLock.lock()
+        if isBufferingAudio {
+            if audioBuffer.count < 64_000 { // cap at ~2 seconds of 16kHz mono
+                audioBuffer.append(data)
+            }
+        } else {
+            deepgramWebSocket.sendAudio(data)
+        }
+        audioBufferLock.unlock()
 
+        // Always update waveform visualization regardless of buffering
         let waveform = audioLevelProcessor.processAudioData(data)
         DispatchQueue.main.async {
-            self.waterfallRenderer.pushWaveform(waveform)
+            self.overlayViewController.waterfall.pushWaveform(waveform)
         }
     }
 }
@@ -532,6 +584,7 @@ extension AppDelegate: DeepgramWebSocketDelegate {
         deepgramWebSocket.disconnect()
         stopMouseTracking()
 
+        overlayViewController.waterfall.stopAnimation()
         overlayPanel.hide()
         setStatusIcon("mic.fill")
         appState.transition(to: .idle)

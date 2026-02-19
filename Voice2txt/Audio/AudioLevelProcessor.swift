@@ -35,9 +35,10 @@ class AudioLevelProcessor {
             var rms: Float = 0
             vDSP_rmsqv(floatSamples.withUnsafeBufferPointer { $0.baseAddress! + start }, 1, &rms, vDSP_Length(count))
 
-            // Noise gate + perceptual boost
-            if rms > 0.005 {
-                waveform[p] = min(1.0, sqrt(rms) * 2.5)
+            // Noise gate + perceptual boost (gate at 0.03 to suppress ambient/room noise)
+            let gated = max(0, rms - 0.03)
+            if gated > 0 {
+                waveform[p] = min(1.0, sqrt(gated) * 2.2)
             }
         }
 

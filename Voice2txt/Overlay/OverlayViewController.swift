@@ -1,24 +1,8 @@
 import Cocoa
-import MetalKit
-
-/// Transparent MTKView subclass that reports non-opaque to the window system.
-class TransparentMTKView: MTKView {
-    override var isOpaque: Bool { false }
-}
 
 class OverlayViewController: NSViewController {
-    private let renderer: WaterfallRenderer
-    private var mtkView: MTKView!
+    private(set) var waterfall: WaterfallView!
     private var transcriptLabel: NSTextField!
-
-    init(renderer: WaterfallRenderer) {
-        self.renderer = renderer
-        super.init(nibName: nil, bundle: nil)
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) not implemented")
-    }
 
     override func loadView() {
         let panelW = OverlayPanel.overlayWidth
@@ -30,38 +14,22 @@ class OverlayViewController: NSViewController {
         container.wantsLayer = true
         container.layer?.backgroundColor = CGColor.clear
 
-        // Metal waterfall at the top
-        guard let device = MTLCreateSystemDefaultDevice() else {
-            print("Metal is not supported on this device")
-            view = container
-            return
-        }
-
-        mtkView = TransparentMTKView(
-            frame: NSRect(x: (panelW - 260) / 2, y: labelH, width: 260, height: waterfallH),
-            device: device
+        // Waterfall view at the top
+        waterfall = WaterfallView(
+            frame: NSRect(x: (panelW - 260) / 2, y: labelH, width: 260, height: waterfallH)
         )
-        mtkView.delegate = renderer
-        mtkView.preferredFramesPerSecond = 30
-        mtkView.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
-        mtkView.wantsLayer = true
-        if let layer = mtkView.layer {
-            layer.isOpaque = false
-            layer.backgroundColor = CGColor.clear
-        }
-        renderer.setup(device: device, pixelFormat: mtkView.colorPixelFormat)
+        waterfall.wantsLayer = true
+        waterfall.layer?.backgroundColor = CGColor.clear
 
         // Shadow labels — stacked black text with increasing blur to create
         // a dark halo that's opaque right behind the text and fades outward.
-        // No boxes, no backgrounds — just shadow.
         let labelFrame = NSRect(x: 4, y: 0, width: panelW - 8, height: labelH)
         let shadowConfigs: [(CGFloat, CGFloat)] = [
-            // (blur radius, alpha) — tight and dark first, then wider and lighter
-            (2,  1.0),   // near-zero blur, full black — dark right behind text
-            (4,  1.0),   // tight glow
-            (8,  0.9),   // medium spread
-            (16, 0.7),   // wide fade
-            (26, 0.4),   // outer haze
+            (2,  1.0),
+            (4,  1.0),
+            (8,  0.9),
+            (16, 0.7),
+            (26, 0.4),
         ]
         for (i, config) in shadowConfigs.enumerated() {
             let shadowLabel = NSTextField(frame: labelFrame)
@@ -103,7 +71,7 @@ class OverlayViewController: NSViewController {
         transcriptLabel.cell?.truncatesLastVisibleLine = true
         transcriptLabel.stringValue = ""
 
-        container.addSubview(mtkView)
+        container.addSubview(waterfall)
         container.addSubview(transcriptLabel)
         view = container
     }

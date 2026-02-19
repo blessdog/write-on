@@ -134,12 +134,13 @@ class PreferencesWindowController: NSObject {
         content.addSubview(micLabel)
 
         micPopup = NSPopUpButton(frame: NSRect(x: 160, y: y - 2, width: 270, height: 28))
-        micPopup.addItem(withTitle: "System Default")
+        micPopup.addItem(withTitle: "Built-in Microphone (Default)")
         micPopup.lastItem?.tag = 0
         let devices = AudioCaptureManager.availableInputDevices()
         let savedDeviceID = UserDefaults.standard.integer(forKey: "audio.inputDeviceID")
         for device in devices {
-            micPopup.addItem(withTitle: device.name)
+            let title = device.isBluetooth ? "\(device.name) (Bluetooth)" : device.name
+            micPopup.addItem(withTitle: title)
             micPopup.lastItem?.tag = Int(device.id)
             if Int(device.id) == savedDeviceID {
                 micPopup.selectItem(withTag: savedDeviceID)

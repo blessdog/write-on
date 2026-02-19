@@ -222,7 +222,9 @@ class DeepgramWebSocket {
                     if self.shouldReconnect && self.reconnectAttempts < self.maxReconnectAttempts {
                         self.attemptReconnect()
                     } else {
-                        self.delegate?.deepgramWebSocketDidClose(self)
+                        DispatchQueue.main.async {
+                            self.delegate?.deepgramWebSocketDidClose(self)
+                        }
                     }
                 }
             }

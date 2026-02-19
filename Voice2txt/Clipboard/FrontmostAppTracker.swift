@@ -13,6 +13,10 @@ class FrontmostAppTracker {
     }
 
     func reactivateSavedApp() {
-        savedApp?.activate()
+        if #available(macOS 14.0, *) {
+            savedApp?.activate()
+        } else {
+            savedApp?.activate(options: [])
+        }
     }
 }

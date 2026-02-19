@@ -1,78 +1,20 @@
-import Foundation
-import MetalKit
-import simd
+import Cocoa
 
-struct WaterfallVertex {
-    var px: Float
-    var py: Float
-    var r: Float
-    var g: Float
-    var b: Float
-    var a: Float
-}
-
-class WaterfallRenderer: NSObject, MTKViewDelegate {
-    private var device: MTLDevice?
-    private var pipelineState: MTLRenderPipelineState?
-    private var commandQueue: MTLCommandQueue?
-
+class WaterfallView: NSView {
     private let numLines = 16
     private let wavePoints = 28
 
     private var waveforms: [[Float]] = []
     private var isTranscribing = false
     private var frameCount: Int = 0
+    private var animationTimer: Timer?
 
-    private let viewWidth: Float = 260
-    private let viewHeight: Float = 90
+    private let tealR: CGFloat = 0.24
+    private let tealG: CGFloat = 1.0
+    private let tealB: CGFloat = 0.85
 
-    // Brand teal color (0.24, 1.0, 0.85)
-    private let tealR: Float = 0.24
-    private let tealG: Float = 1.0
-    private let tealB: Float = 0.85
-
-    func setup(device: MTLDevice, pixelFormat: MTLPixelFormat) {
-        self.device = device
-        self.commandQueue = device.makeCommandQueue()
-
-        guard let library = device.makeDefaultLibrary() else {
-            print("Failed to load Metal library")
-            return
-        }
-
-        let vertexFunction = library.makeFunction(name: "waterfallVertex")
-        let fragmentFunction = library.makeFunction(name: "waterfallFragment")
-
-        let descriptor = MTLRenderPipelineDescriptor()
-        descriptor.vertexFunction = vertexFunction
-        descriptor.fragmentFunction = fragmentFunction
-        descriptor.colorAttachments[0].pixelFormat = pixelFormat
-
-        // Alpha blending for transparent background
-        descriptor.colorAttachments[0].isBlendingEnabled = true
-        descriptor.colorAttachments[0].sourceRGBBlendFactor = .sourceAlpha
-        descriptor.colorAttachments[0].destinationRGBBlendFactor = .oneMinusSourceAlpha
-        descriptor.colorAttachments[0].sourceAlphaBlendFactor = .sourceAlpha
-        descriptor.colorAttachments[0].destinationAlphaBlendFactor = .oneMinusSourceAlpha
-
-        // Vertex descriptor matching WaterfallVertex struct
-        let vertexDescriptor = MTLVertexDescriptor()
-        vertexDescriptor.attributes[0].format = .float2
-        vertexDescriptor.attributes[0].offset = 0
-        vertexDescriptor.attributes[0].bufferIndex = 0
-        vertexDescriptor.attributes[1].format = .float4
-        vertexDescriptor.attributes[1].offset = 8   // 2 floats (px, py) = 8 bytes
-        vertexDescriptor.attributes[1].bufferIndex = 0
-        vertexDescriptor.layouts[0].stride = 24      // 6 floats = 24 bytes
-
-        descriptor.vertexDescriptor = vertexDescriptor
-
-        do {
-            pipelineState = try device.makeRenderPipelineState(descriptor: descriptor)
-        } catch {
-            print("Failed to create pipeline state: \(error)")
-        }
-    }
+    override var isOpaque: Bool { false }
+    override var isFlipped: Bool { false }
 
     func pushWaveform(_ waveform: [Float]) {
         waveforms.insert(waveform, at: 0)
@@ -91,170 +33,150 @@ class WaterfallRenderer: NSObject, MTKViewDelegate {
         frameCount = 0
     }
 
-    // MARK: - MTKViewDelegate
-
-    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
-
-    func draw(in view: MTKView) {
-        frameCount += 1
-
-        guard let pipelineState = pipelineState,
-              let commandQueue = commandQueue,
-              let descriptor = view.currentRenderPassDescriptor,
-              let commandBuffer = commandQueue.makeCommandBuffer(),
-              let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) else {
-            return
+    func startAnimation() {
+        guard animationTimer == nil else { return }
+        animationTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+            self?.needsDisplay = true
         }
-
-        encoder.setRenderPipelineState(pipelineState)
-
-        let vertices: [WaterfallVertex]
-
-        if isTranscribing {
-            vertices = buildTranscribingVertices()
-        } else {
-            vertices = buildWaterfallVertices()
-        }
-
-        if !vertices.isEmpty {
-            let buffer = device?.makeBuffer(
-                bytes: vertices,
-                length: vertices.count * MemoryLayout<WaterfallVertex>.stride,
-                options: .storageModeShared
-            )
-
-            if let buffer = buffer {
-                encoder.setVertexBuffer(buffer, offset: 0, index: 0)
-
-                let lineCount = vertices.count / wavePoints
-                for line in 0..<lineCount {
-                    encoder.drawPrimitives(
-                        type: .lineStrip,
-                        vertexStart: line * wavePoints,
-                        vertexCount: wavePoints
-                    )
-                }
-            }
-        }
-
-        encoder.endEncoding()
-        if let drawable = view.currentDrawable {
-            commandBuffer.present(drawable)
-        }
-        commandBuffer.commit()
     }
 
-    // MARK: - Vertex Building
+    func stopAnimation() {
+        if Thread.isMainThread {
+            animationTimer?.invalidate()
+            animationTimer = nil
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.animationTimer?.invalidate()
+                self?.animationTimer = nil
+            }
+        }
+    }
 
-    // Subtle shadow offsets for waveform lines — just enough contrast
-    private var glowOffsets: [(Float, Float, Float)] {
-        let px: Float = 1.0 / viewWidth * 2.0
-        let py: Float = 1.0 / viewHeight * 2.0
-        return [
-            (0,       py * 2,  0.35),  // below
-            (0,      -py * 2,  0.35),  // above
-            (px * 2,  0,       0.3),   // right
-            (-px * 2, 0,       0.3),   // left
+    // MARK: - Drawing
+
+    private var glowOffsets: [(CGFloat, CGFloat, CGFloat)] {
+        [
+            (0,    1,  0.3),   // below
+            (0,   -1,  0.3),   // above
+            (1,    0,  0.25),  // right
+            (-1,   0,  0.25),  // left
         ]
     }
 
-    private func buildWaterfallVertices() -> [WaterfallVertex] {
-        guard !waveforms.isEmpty else { return [] }
+    override func draw(_ dirtyRect: NSRect) {
+        frameCount += 1
 
-        var shadowVertices: [WaterfallVertex] = []
-        var brightVertices: [WaterfallVertex] = []
-        let baseY: Float = viewHeight - 10
-        let lineSpacing: Float = 4.5
-        let maxAmplitude: Float = 30
-        let waveWidth: Float = viewWidth - 24
-        let offsets = glowOffsets
+        // Clear to transparent using .copy compositing (sourceOver would be a no-op with clear)
+        NSColor.clear.setFill()
+        dirtyRect.fill(using: .copy)
 
-        for row in stride(from: waveforms.count - 1, through: 0, by: -1) {
-            let waveform = waveforms[row]
-            let frac = Float(row) / Float(max(numLines - 1, 1))
-            let y = baseY - Float(row) * lineSpacing
+        let viewW = bounds.width
+        let viewH = bounds.height
 
-            let perspective: Float = 1.0 - frac * 0.4
-            let w = waveWidth * perspective
-            let xOffset = (viewWidth - w) / 2
-            let brightness: Float = 1.0 - frac * 0.6
-
-            // Precompute NDC coords for this row
-            var ndcCoords: [(Float, Float)] = []
-            for (i, amp) in waveform.enumerated() {
-                let px = xOffset + (Float(i) / Float(max(waveform.count - 1, 1))) * w
-                let dy = amp * maxAmplitude * perspective
-                let ndcX = (px / viewWidth) * 2.0 - 1.0
-                let ndcY = 1.0 - ((y - dy) / viewHeight) * 2.0
-                ndcCoords.append((ndcX, ndcY))
-            }
-
-            // Each glow offset produces one complete line strip
-            for (ox, oy, oa) in offsets {
-                for (ndcX, ndcY) in ndcCoords {
-                    shadowVertices.append(WaterfallVertex(
-                        px: ndcX + ox, py: ndcY + oy,
-                        r: 0, g: 0, b: 0, a: oa
-                    ))
-                }
-            }
-
-            // Bright line strip — teal scaled by brightness
-            for (ndcX, ndcY) in ndcCoords {
-                brightVertices.append(WaterfallVertex(
-                    px: ndcX, py: ndcY,
-                    r: tealR * brightness, g: tealG * brightness, b: tealB * brightness, a: 1.0
-                ))
-            }
+        if isTranscribing {
+            drawTranscribing(viewW: viewW, viewH: viewH)
+        } else {
+            drawWaterfall(viewW: viewW, viewH: viewH)
         }
-
-        return shadowVertices + brightVertices
     }
 
-    private func buildTranscribingVertices() -> [WaterfallVertex] {
-        var shadowVertices: [WaterfallVertex] = []
-        var brightVertices: [WaterfallVertex] = []
-        let baseY: Float = viewHeight - 10
-        let lineSpacing: Float = 4.5
-        let waveWidth: Float = viewWidth - 24
-        let t = Float(frameCount) * 0.05
+    private func drawWaterfall(viewW: CGFloat, viewH: CGFloat) {
+        guard !waveforms.isEmpty else { return }
+
+        let baseY: CGFloat = 10  // bottom-up in non-flipped coords
+        let lineSpacing: CGFloat = 4.5
+        let maxAmplitude: CGFloat = 30
+        let waveWidth: CGFloat = viewW - 24
+        let offsets = glowOffsets
+
+        // Draw back-to-front: oldest rows first (highest index), newest last (index 0)
+        for row in stride(from: waveforms.count - 1, through: 0, by: -1) {
+            let waveform = waveforms[row]
+            let frac = CGFloat(row) / CGFloat(max(numLines - 1, 1))
+            let y = baseY + CGFloat(row) * lineSpacing
+
+            let perspective: CGFloat = 1.0 - frac * 0.4
+            let w = waveWidth * perspective
+            let xOffset = (viewW - w) / 2
+            let brightness: CGFloat = 1.0 - frac * 0.6
+
+            // Precompute view-space points
+            var points: [NSPoint] = []
+            for (i, amp) in waveform.enumerated() {
+                let px = xOffset + (CGFloat(i) / CGFloat(max(waveform.count - 1, 1))) * w
+                let dy = CGFloat(amp) * maxAmplitude * perspective
+                points.append(NSPoint(x: px, y: y + dy))
+            }
+
+            guard points.count >= 2 else { continue }
+
+            // Shadow passes
+            for (ox, oy, oa) in offsets {
+                let path = NSBezierPath()
+                path.move(to: NSPoint(x: points[0].x + ox, y: points[0].y + oy))
+                for p in points.dropFirst() {
+                    path.line(to: NSPoint(x: p.x + ox, y: p.y + oy))
+                }
+                path.lineWidth = 1.0
+                NSColor.black.withAlphaComponent(oa).setStroke()
+                path.stroke()
+            }
+
+            // Bright teal line
+            let path = NSBezierPath()
+            path.move(to: points[0])
+            for p in points.dropFirst() {
+                path.line(to: p)
+            }
+            path.lineWidth = 1.0
+            NSColor(red: tealR * brightness, green: tealG * brightness, blue: tealB * brightness, alpha: 1.0).setStroke()
+            path.stroke()
+        }
+    }
+
+    private func drawTranscribing(viewW: CGFloat, viewH: CGFloat) {
+        let baseY: CGFloat = 10
+        let lineSpacing: CGFloat = 4.5
+        let waveWidth: CGFloat = viewW - 24
+        let t = CGFloat(frameCount) * 0.05
         let offsets = glowOffsets
 
         let rowCount = min(8, numLines)
         for row in stride(from: rowCount - 1, through: 0, by: -1) {
-            let frac = Float(row) / Float(numLines)
-            let y = baseY - Float(row) * lineSpacing
-            let alpha: Float = 1.0 - frac * 0.7
+            let frac = CGFloat(row) / CGFloat(numLines)
+            let y = baseY + CGFloat(row) * lineSpacing
+            let alpha: CGFloat = 1.0 - frac * 0.7
 
-            // Precompute NDC coords for this row
-            var ndcCoords: [(Float, Float)] = []
+            var points: [NSPoint] = []
             for i in 0..<wavePoints {
-                let px: Float = 12 + (Float(i) / Float(wavePoints - 1)) * waveWidth
-                let dy = sin(t + Float(i) * 0.3 + Float(row) * 0.5) * 3 * alpha
-                let ndcX = (px / viewWidth) * 2.0 - 1.0
-                let ndcY = 1.0 - ((y + dy) / viewHeight) * 2.0
-                ndcCoords.append((ndcX, ndcY))
+                let px: CGFloat = 12 + (CGFloat(i) / CGFloat(wavePoints - 1)) * waveWidth
+                let dy = sin(Float(t) + Float(i) * 0.3 + Float(row) * 0.5) * 3 * Float(alpha)
+                points.append(NSPoint(x: px, y: y + CGFloat(dy)))
             }
 
-            // Each glow offset produces one complete line strip
+            guard points.count >= 2 else { continue }
+
+            // Shadow passes
             for (ox, oy, oa) in offsets {
-                for (ndcX, ndcY) in ndcCoords {
-                    shadowVertices.append(WaterfallVertex(
-                        px: ndcX + ox, py: ndcY + oy,
-                        r: 0, g: 0, b: 0, a: oa
-                    ))
+                let path = NSBezierPath()
+                path.move(to: NSPoint(x: points[0].x + ox, y: points[0].y + oy))
+                for p in points.dropFirst() {
+                    path.line(to: NSPoint(x: p.x + ox, y: p.y + oy))
                 }
+                path.lineWidth = 1.0
+                NSColor.black.withAlphaComponent(oa).setStroke()
+                path.stroke()
             }
 
-            // Bright line strip — teal scaled by alpha
-            for (ndcX, ndcY) in ndcCoords {
-                brightVertices.append(WaterfallVertex(
-                    px: ndcX, py: ndcY,
-                    r: tealR * alpha, g: tealG * alpha, b: tealB * alpha, a: 1.0
-                ))
+            // Bright teal line
+            let path = NSBezierPath()
+            path.move(to: points[0])
+            for p in points.dropFirst() {
+                path.line(to: p)
             }
+            path.lineWidth = 1.0
+            NSColor(red: tealR * alpha, green: tealG * alpha, blue: tealB * alpha, alpha: 1.0).setStroke()
+            path.stroke()
         }
-
-        return shadowVertices + brightVertices
     }
 }
