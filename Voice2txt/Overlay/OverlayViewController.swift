@@ -3,6 +3,9 @@ import Cocoa
 class OverlayViewController: NSViewController {
     private(set) var waterfall: WaterfallView!
     private var transcriptLabel: NSTextField!
+    private var shadowLabels: [NSTextField] = []
+    private var pendingText: String?
+    private var updateScheduled = false
 
     override func loadView() {
         let panelW = OverlayPanel.overlayWidth
@@ -54,6 +57,7 @@ class OverlayViewController: NSViewController {
             shadowLabel.shadow = s
 
             container.addSubview(shadowLabel)
+            shadowLabels.append(shadowLabel)
         }
 
         // Transcript label on top — teal text
@@ -77,9 +81,14 @@ class OverlayViewController: NSViewController {
     }
 
     func updateTranscript(_ text: String) {
-        transcriptLabel.stringValue = text
-        for i in 0..<5 {
-            if let shadow = view.subviews.first(where: { $0.tag == 100 + i }) as? NSTextField {
+        pendingText = text
+        guard !updateScheduled else { return }
+        updateScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, let text = self.pendingText else { return }
+            self.updateScheduled = false
+            self.transcriptLabel.stringValue = text
+            for shadow in self.shadowLabels {
                 shadow.stringValue = text
             }
         }

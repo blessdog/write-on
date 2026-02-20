@@ -3,6 +3,7 @@ import Foundation
 class TranscriptAssembler {
     private var finalSegments: [String] = []
     private var pendingInterim: String = ""
+    private static let punctuationRegex = try! NSRegularExpression(pattern: "([.!?])([A-Z])")
 
     func addResult(text: String, isFinal: Bool) {
         if isFinal {
@@ -20,10 +21,10 @@ class TranscriptAssembler {
         }
         let raw = parts.joined(separator: " ")
         // Deepgram sometimes omits spaces after sentence-ending punctuation
-        return raw.replacingOccurrences(
-            of: "([.!?])([A-Z])",
-            with: "$1 $2",
-            options: .regularExpression
+        return Self.punctuationRegex.stringByReplacingMatches(
+            in: raw,
+            range: NSRange(raw.startIndex..., in: raw),
+            withTemplate: "$1 $2"
         )
     }
 
