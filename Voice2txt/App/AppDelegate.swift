@@ -222,7 +222,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem.separator())
 
         // Preferences
-        let prefsItem = NSMenuItem(title: "Preferences...", action: #selector(showPreferences), keyEquivalent: ",")
+        let prefsItem = NSMenuItem(title: "Preferences...", action: #selector(showPreferences), keyEquivalent: "")
         prefsItem.target = self
         menu.addItem(prefsItem)
 
@@ -539,6 +539,7 @@ extension AppDelegate: HotkeyManagerDelegate {
         clipboardManager.pasteStoredTranscript()
         v2log("Ctrl+V: pasting stored transcript")
     }
+
 }
 
 // MARK: - AudioCaptureManagerDelegate

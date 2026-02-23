@@ -22,9 +22,94 @@ struct LongHotkeyConfig {
 }
 
 struct ShortHotkeyConfig {
+    // Legacy modifier-only mode (isModifier == true): uses keyCode + modFlag
     var keyCode: UInt16 = 61                      // Right Option
     var modFlag: NSEvent.ModifierFlags = .option
+
+    // Two-key combo mode (isModifier == false): uses key1 + key2
+    // key1/key2 can be ANY keys (regular or modifier keyCodes)
+    var key1: UInt16 = 0
+    var key2: UInt16 = 0
+
+    var isModifier: Bool = true
     var display: String = "Hold Right Option"
+}
+
+// MARK: - CGEventTap callback (file-scope, @convention(c))
+
+private func shortKeyEventTapCallback(
+    proxy: CGEventTapProxy,
+    type: CGEventType,
+    event: CGEvent,
+    refcon: UnsafeMutableRawPointer?
+) -> Unmanaged<CGEvent>? {
+    guard let refcon = refcon else { return Unmanaged.passRetained(event) }
+    let manager = Unmanaged<HotkeyManager>.fromOpaque(refcon).takeUnretainedValue()
+
+    // Re-enable tap if macOS disables it due to timeout
+    if type == .tapDisabledByTimeout {
+        if let tap = manager.shortKeyEventTap {
+            CGEvent.tapEnable(tap: tap, enable: true)
+        }
+        return Unmanaged.passRetained(event)
+    }
+
+    let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
+    let key1 = manager.shortConfig.key1
+    let key2 = manager.shortConfig.key2
+
+    // Safety: don't match if keys aren't configured
+    if key1 == 0 && key2 == 0 { return Unmanaged.passRetained(event) }
+
+    guard keyCode == key1 || keyCode == key2 else {
+        return Unmanaged.passRetained(event)
+    }
+
+    if type == .keyDown {
+        // Ignore key repeats
+        if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 {
+            if manager.shortKey1Held && manager.shortKey2Held { return nil }
+            return Unmanaged.passRetained(event)
+        }
+
+        if keyCode == key1 { manager.shortKey1Held = true }
+        if keyCode == key2 { manager.shortKey2Held = true }
+
+        // Both keys held — start recording
+        if manager.shortKey1Held && manager.shortKey2Held && !manager.isRecording {
+            manager.isRecording = true
+            manager.holdKeyHeld = true
+            DispatchQueue.main.async {
+                manager.delegate?.hotkeyManagerDidStartRecording(mode: .short)
+            }
+        }
+
+        // Suppress the key if either key of our combo is involved
+        if manager.shortKey1Held && manager.shortKey2Held {
+            return nil
+        }
+        // If only one key is held, pass through (it might be a normal keystroke)
+        return Unmanaged.passRetained(event)
+    }
+
+    if type == .keyUp {
+        if keyCode == key1 { manager.shortKey1Held = false }
+        if keyCode == key2 { manager.shortKey2Held = false }
+
+        if manager.holdKeyHeld {
+            manager.holdKeyHeld = false
+            if manager.isRecording {
+                manager.isRecording = false
+                DispatchQueue.main.async {
+                    manager.delegate?.hotkeyManagerDidStopRecording()
+                }
+            }
+            return nil // suppress
+        }
+        return Unmanaged.passRetained(event)
+    }
+
+    return Unmanaged.passRetained(event)
 }
 
 class HotkeyManager {
@@ -67,12 +152,19 @@ class HotkeyManager {
     private var doubleTapTimestamps: [TimeInterval] = []
     private let doubleTapWindow: TimeInterval = 0.3
 
-    private var holdKeyHeld = false
-    private var isRecording = false
+    // fileprivate so the CGEventTap callback can access them
+    fileprivate var holdKeyHeld = false
+    fileprivate var isRecording = false
+    fileprivate var shortKey1Held = false
+    fileprivate var shortKey2Held = false
     private var previousFlags: NSEvent.ModifierFlags = []
 
+    // CGEventTap for two-key short recording
+    fileprivate var shortKeyEventTap: CFMachPort?
+    private var shortKeyRunLoopSource: CFRunLoopSource?
+
     private(set) var longConfig = LongHotkeyConfig()
-    private(set) var shortConfig = ShortHotkeyConfig()
+    fileprivate(set) var shortConfig = ShortHotkeyConfig()
 
     // MARK: - Config
 
@@ -104,16 +196,54 @@ class HotkeyManager {
         if defaults.object(forKey: "hotkey.short.modFlag") != nil {
             shortConfig.modFlag = NSEvent.ModifierFlags(rawValue: UInt(defaults.integer(forKey: "hotkey.short.modFlag")))
         }
+        if defaults.object(forKey: "hotkey.short.key1") != nil {
+            shortConfig.key1 = UInt16(defaults.integer(forKey: "hotkey.short.key1"))
+        }
+        if defaults.object(forKey: "hotkey.short.key2") != nil {
+            shortConfig.key2 = UInt16(defaults.integer(forKey: "hotkey.short.key2"))
+        }
+        if defaults.object(forKey: "hotkey.short.isModifier") != nil {
+            shortConfig.isModifier = defaults.bool(forKey: "hotkey.short.isModifier")
+        } else {
+            shortConfig.isModifier = true // backward compat: default to modifier mode
+        }
+        // Migration: if combo mode but key1/key2 were never saved, reset to modifier mode
+        if !shortConfig.isModifier && shortConfig.key1 == 0 && shortConfig.key2 == 0 {
+            shortConfig.isModifier = true
+            shortConfig.keyCode = 61
+            shortConfig.modFlag = .option
+            shortConfig.display = "Hold Right Option"
+            // Persist the fix
+            defaults.set(true, forKey: "hotkey.short.isModifier")
+            defaults.set(Int(61), forKey: "hotkey.short.keyCode")
+            defaults.set(Int(NSEvent.ModifierFlags.option.rawValue), forKey: "hotkey.short.modFlag")
+            defaults.set("Hold Right Option", forKey: "hotkey.short.display")
+        }
         if let display = defaults.string(forKey: "hotkey.short.display") {
             shortConfig.display = display
         }
     }
 
     func reloadConfig() {
+        let wasCombo = !shortConfig.isModifier
         loadConfig()
         // Reset state so new config takes effect cleanly
         doubleTapTimestamps.removeAll()
         holdKeyHeld = false
+        shortKey1Held = false
+        shortKey2Held = false
+
+        // Reinstall or remove CGEventTap based on new config
+        if shortConfig.isModifier {
+            removeShortKeyEventTap()
+        } else if !wasCombo || shortKeyEventTap == nil {
+            removeShortKeyEventTap()
+            installShortKeyEventTap()
+        } else {
+            // Config changed but still combo mode — reinstall with new keyCodes
+            removeShortKeyEventTap()
+            installShortKeyEventTap()
+        }
     }
 
     static func saveLongConfig(_ config: LongHotkeyConfig) {
@@ -129,6 +259,9 @@ class HotkeyManager {
         let defaults = UserDefaults.standard
         defaults.set(Int(config.keyCode), forKey: "hotkey.short.keyCode")
         defaults.set(Int(config.modFlag.rawValue), forKey: "hotkey.short.modFlag")
+        defaults.set(Int(config.key1), forKey: "hotkey.short.key1")
+        defaults.set(Int(config.key2), forKey: "hotkey.short.key2")
+        defaults.set(config.isModifier, forKey: "hotkey.short.isModifier")
         defaults.set(config.display, forKey: "hotkey.short.display")
     }
 
@@ -150,6 +283,12 @@ class HotkeyManager {
             print("Failed to create global event monitor.")
             return false
         }
+
+        // Install CGEventTap for two-key short recording
+        if !shortConfig.isModifier {
+            installShortKeyEventTap()
+        }
+
         return true
     }
 
@@ -162,6 +301,7 @@ class HotkeyManager {
             NSEvent.removeMonitor(monitor)
             keyDownMonitor = nil
         }
+        removeShortKeyEventTap()
     }
 
     // MARK: - Event Handling
@@ -191,8 +331,8 @@ class HotkeyManager {
         let flags = event.modifierFlags
         let keyCode = event.keyCode
 
-        // Short recording: hold modifier key
-        if keyCode == shortConfig.keyCode {
+        // Short recording: hold modifier key (only when configured for modifier mode)
+        if shortConfig.isModifier && keyCode == shortConfig.keyCode {
             if flags.contains(shortConfig.modFlag) {
                 if !holdKeyHeld && !isRecording {
                     holdKeyHeld = true
@@ -210,6 +350,44 @@ class HotkeyManager {
             }
             previousFlags = flags
             return
+        }
+
+        // Two-key combo: track modifier keyCodes via flagsChanged
+        // (CGEventTap only sees regular keyDown/keyUp, not modifier changes)
+        if !shortConfig.isModifier {
+            let key1 = shortConfig.key1
+            let key2 = shortConfig.key2
+            let isKey1Modifier = HotkeyManager.modifierNameForKeyCode[key1] != nil
+            let isKey2Modifier = HotkeyManager.modifierNameForKeyCode[key2] != nil
+
+            if isKey1Modifier && keyCode == key1 {
+                let modName = HotkeyManager.modifierNameForKeyCode[key1]!
+                let modFlag = HotkeyManager.modifierFlagForName[modName]!
+                shortKey1Held = flags.contains(modFlag)
+            }
+            if isKey2Modifier && keyCode == key2 {
+                let modName = HotkeyManager.modifierNameForKeyCode[key2]!
+                let modFlag = HotkeyManager.modifierFlagForName[modName]!
+                shortKey2Held = flags.contains(modFlag)
+            }
+
+            if shortKey1Held && shortKey2Held && !isRecording {
+                isRecording = true
+                holdKeyHeld = true
+                delegate?.hotkeyManagerDidStartRecording(mode: .short)
+            } else if holdKeyHeld && (!shortKey1Held || !shortKey2Held) {
+                holdKeyHeld = false
+                if isRecording {
+                    isRecording = false
+                    delegate?.hotkeyManagerDidStopRecording()
+                }
+            }
+
+            // Only return early if this event was for one of our combo keys
+            if (isKey1Modifier && keyCode == key1) || (isKey2Modifier && keyCode == key2) {
+                previousFlags = flags
+                return
+            }
         }
 
         // Long recording: double-tap mode
@@ -240,5 +418,48 @@ class HotkeyManager {
         }
 
         previousFlags = flags
+    }
+
+    // MARK: - CGEventTap for Two-Key Short Recording
+
+    private func installShortKeyEventTap() {
+        // Only install if at least one key is a regular (non-modifier) key
+        let key1IsMod = HotkeyManager.modifierNameForKeyCode[shortConfig.key1] != nil
+        let key2IsMod = HotkeyManager.modifierNameForKeyCode[shortConfig.key2] != nil
+        if key1IsMod && key2IsMod {
+            // Both keys are modifiers — handled entirely via flagsChanged, no tap needed
+            return
+        }
+
+        let refcon = Unmanaged.passUnretained(self).toOpaque()
+
+        guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: CGEventMask(1 << CGEventType.keyDown.rawValue) | CGEventMask(1 << CGEventType.keyUp.rawValue),
+            callback: shortKeyEventTapCallback,
+            userInfo: refcon
+        ) else {
+            print("Failed to create CGEventTap — check Accessibility permissions")
+            return
+        }
+
+        shortKeyEventTap = tap
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        shortKeyRunLoopSource = source
+        CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
+    }
+
+    private func removeShortKeyEventTap() {
+        if let source = shortKeyRunLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
+            shortKeyRunLoopSource = nil
+        }
+        if let tap = shortKeyEventTap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+            shortKeyEventTap = nil
+        }
     }
 }

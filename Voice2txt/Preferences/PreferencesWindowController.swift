@@ -12,14 +12,20 @@ class PreferencesWindowController: NSObject {
     private var shortChangeButton: NSButton!
     private var conflictLabel: NSTextField!
 
-    // Capture state
+    // Long capture state
     private var capturingLong = false
-    private var capturingShort = false
-    private var captureMonitors: [Any] = []
     private var captureModifierTimer: Timer?
     private var capturedModifierName: String?
     private var capturedModifierKeyCodes: Set<UInt16>?
     private var capturedModifierFlag: NSEvent.ModifierFlags?
+
+    // Short capture state (any two keys)
+    private var capturingShort = false
+    private var shortCapturedKey1: UInt16?
+    private var shortCapturedKey1IsModifier = false
+
+    // Shared
+    private var captureMonitors: [Any] = []
 
     // Reference to HotkeyManager for reloading
     var hotkeyManager: HotkeyManager?
@@ -212,55 +218,118 @@ class PreferencesWindowController: NSObject {
         shortChangeButton.isEnabled = false
         longChangeButton.isEnabled = false
         conflictLabel.isHidden = true
+        showHint("Press first key, then second key (e.g. 6 then 7)")
         beginCapture(forLong: false)
     }
 
     private func beginCapture(forLong: Bool) {
-        // Local monitors capture events while the Preferences window is key
         let flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             self?.handleCaptureFlags(event, forLong: forLong)
-            return nil // consume the event
+            return nil
         }
         let keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             self?.handleCaptureKeyDown(event, forLong: forLong)
-            return nil // consume the event
+            return nil
         }
         captureMonitors = [flagsMonitor as Any, keyMonitor as Any]
     }
 
-    private func handleCaptureFlags(_ event: NSEvent, forLong: Bool) {
+    // MARK: - Short Capture (any two keys)
+
+    private func handleShortCaptureFlags(_ event: NSEvent) {
+        let keyCode = event.keyCode
+        guard let modName = HotkeyManager.modifierNameForKeyCode[keyCode] else { return }
+        let isPress = event.modifierFlags.contains(HotkeyManager.modifierFlagForName[modName]!)
+
+        guard isPress else { return } // ignore releases
+
+        if shortCapturedKey1 == nil {
+            // First key
+            shortCapturedKey1 = keyCode
+            shortCapturedKey1IsModifier = true
+            let name = displayNameForKeyCode(keyCode)
+            showHint("\(name) + ...")
+        } else if shortCapturedKey1 != keyCode {
+            // Second key — done
+            finishShortCapture(key1: shortCapturedKey1!, key2: keyCode)
+        }
+    }
+
+    private func handleShortCaptureKeyDown(_ event: NSEvent) {
         let keyCode = event.keyCode
 
-        // Identify which modifier was pressed
-        guard let modName = HotkeyManager.modifierNameForKeyCode[keyCode] else { return }
+        // Escape cancels
+        if keyCode == 53 {
+            cancelCapture()
+            return
+        }
 
+        // Block dangerous keys
+        let blockedKeys: Set<UInt16> = [36, 51, 117, 48, 76, 123, 124, 125, 126]
+        if blockedKeys.contains(keyCode) {
+            cancelCapture()
+            showConflict("That key cannot be used for Quick Recording")
+            return
+        }
+
+        if shortCapturedKey1 == nil {
+            // First key
+            shortCapturedKey1 = keyCode
+            shortCapturedKey1IsModifier = false
+            let name = displayNameForKeyCode(keyCode)
+            showHint("\(name) + ...")
+        } else if shortCapturedKey1 != keyCode {
+            // Second key — done
+            finishShortCapture(key1: shortCapturedKey1!, key2: keyCode)
+        }
+    }
+
+    private func finishShortCapture(key1: UInt16, key2: UInt16) {
+        let name1 = displayNameForKeyCode(key1)
+        let name2 = displayNameForKeyCode(key2)
+        let display = "Hold \(name1)+\(name2)"
+
+        let config = ShortHotkeyConfig(
+            keyCode: key1,
+            modFlag: [],
+            key1: key1,
+            key2: key2,
+            isModifier: false,
+            display: display
+        )
+        HotkeyManager.saveShortConfig(config)
+        shortHotkeyLabel.stringValue = display
+        hotkeyManager?.reloadConfig()
+        endCapture()
+    }
+
+    // MARK: - Long Capture (modifier-based, existing logic)
+
+    private func handleCaptureFlags(_ event: NSEvent, forLong: Bool) {
+        if !forLong {
+            handleShortCaptureFlags(event)
+            return
+        }
+
+        let keyCode = event.keyCode
+        guard let modName = HotkeyManager.modifierNameForKeyCode[keyCode] else { return }
         let isPress = event.modifierFlags.contains(HotkeyManager.modifierFlagForName[modName]!)
 
         if isPress {
-            // Modifier pressed — store it and wait to see if a key follows
             capturedModifierName = modName
             capturedModifierKeyCodes = HotkeyManager.modifierKeyCodes[modName]
             capturedModifierFlag = HotkeyManager.modifierFlagForName[modName]
 
-            if forLong {
-                // For long recording: wait 0.5s — if no key arrives, treat as double-tap mode
-                captureModifierTimer?.invalidate()
-                captureModifierTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
-                    self?.finishCaptureLongDoubleTap()
-                }
-            } else {
-                // For short recording: modifier-only is valid immediately
-                finishCaptureShort(keyCode: keyCode)
+            captureModifierTimer?.invalidate()
+            captureModifierTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
+                self?.finishCaptureLongDoubleTap()
             }
         }
-        // Releases are ignored during capture
     }
 
     private func handleCaptureKeyDown(_ event: NSEvent, forLong: Bool) {
-        guard forLong else {
-            // Short recording only accepts modifier-only presses
-            cancelCapture()
-            showConflict("Quick Recording must be a modifier key only (Ctrl, Cmd, Option, Shift)")
+        if !forLong {
+            handleShortCaptureKeyDown(event)
             return
         }
 
@@ -270,26 +339,20 @@ class PreferencesWindowController: NSObject {
 
         guard let modName = capturedModifierName,
               let modFlag = capturedModifierFlag else {
-            // No modifier was held, press Escape to cancel
-            if event.keyCode == 53 { // Escape
-                cancelCapture()
-            }
+            if event.keyCode == 53 { cancelCapture() }
             return
         }
 
-        // Escape cancels
         if event.keyCode == 53 {
             cancelCapture()
             return
         }
 
-        // Check for system hotkey conflicts
         let comboKeyCode = event.keyCode
         if checkConflict(modName: modName, keyCode: comboKeyCode) {
             return
         }
 
-        // Save as combo mode
         let keyName = keyNameForCode(comboKeyCode)
         let displayModifier = HotkeyManager.displayNameForModifier[modName] ?? modName.capitalized
         let display = "\(displayModifier)+\(keyName)"
@@ -330,28 +393,7 @@ class PreferencesWindowController: NSObject {
         endCapture()
     }
 
-    private func finishCaptureShort(keyCode: UInt16) {
-        guard let modName = capturedModifierName,
-              let modFlag = capturedModifierFlag else {
-            cancelCapture()
-            return
-        }
-
-        let isRight = [62, 61, 60, 54].contains(keyCode) // Right Ctrl, Right Opt, Right Shift, Right Cmd
-        let side = isRight ? "Right " : ""
-        let displayModifier = HotkeyManager.displayNameForModifier[modName] ?? modName.capitalized
-        let display = "Hold \(side)\(displayModifier)"
-
-        let config = ShortHotkeyConfig(
-            keyCode: keyCode,
-            modFlag: modFlag,
-            display: display
-        )
-        HotkeyManager.saveShortConfig(config)
-        shortHotkeyLabel.stringValue = display
-        hotkeyManager?.reloadConfig()
-        endCapture()
-    }
+    // MARK: - Capture Cleanup
 
     private func cancelCapture() {
         captureModifierTimer?.invalidate()
@@ -359,6 +401,8 @@ class PreferencesWindowController: NSObject {
         capturedModifierName = nil
         capturedModifierKeyCodes = nil
         capturedModifierFlag = nil
+        shortCapturedKey1 = nil
+        shortCapturedKey1IsModifier = false
         endCapture()
     }
 
@@ -372,6 +416,8 @@ class PreferencesWindowController: NSObject {
         capturedModifierName = nil
         capturedModifierKeyCodes = nil
         capturedModifierFlag = nil
+        shortCapturedKey1 = nil
+        shortCapturedKey1IsModifier = false
         capturingLong = false
         capturingShort = false
 
@@ -412,11 +458,38 @@ class PreferencesWindowController: NSObject {
     }
 
     private func showConflict(_ message: String) {
+        conflictLabel.textColor = NSColor(red: 1, green: 0.3, blue: 0.3, alpha: 1)
+        conflictLabel.stringValue = message
+        conflictLabel.isHidden = false
+    }
+
+    private func showHint(_ message: String) {
+        conflictLabel.textColor = NSColor(red: 0.4, green: 0.8, blue: 0.7, alpha: 0.8)
         conflictLabel.stringValue = message
         conflictLabel.isHidden = false
     }
 
     // MARK: - Key Name Lookup
+
+    private func displayNameForKeyCode(_ keyCode: UInt16) -> String {
+        // Check modifier keys first
+        if let modName = HotkeyManager.modifierNameForKeyCode[keyCode] {
+            let isRight: Set<UInt16> = [62, 61, 60, 54]
+            let side = isRight.contains(keyCode) ? "R." : "L."
+            let displayMod = HotkeyManager.displayNameForModifier[modName] ?? modName.capitalized
+            return "\(side)\(displayMod)"
+        }
+        // F-keys and special keys
+        let special: [UInt16: String] = [
+            49: "Space",
+            122: "F1", 120: "F2", 99: "F3", 118: "F4", 96: "F5", 97: "F6",
+            98: "F7", 100: "F8", 101: "F9", 109: "F10", 103: "F11", 111: "F12",
+            105: "F13", 107: "F14", 113: "F15", 106: "F16", 64: "F17", 79: "F18",
+            80: "F19", 90: "F20", 50: "`",
+        ]
+        if let name = special[keyCode] { return name }
+        return keyNameForCode(keyCode)
+    }
 
     private func keyNameForCode(_ keyCode: UInt16) -> String {
         let names: [UInt16: String] = [

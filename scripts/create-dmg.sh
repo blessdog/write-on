@@ -45,6 +45,10 @@ ln -s /Applications "$MOUNT_DIR/Applications"
 if [ -f "$BG_IMAGE" ]; then
     mkdir -p "$MOUNT_DIR/.background"
     cp "$BG_IMAGE" "$MOUNT_DIR/.background/background.png"
+    # Hide the .background folder (SetFile from Xcode command line tools)
+    if command -v SetFile &>/dev/null; then
+        SetFile -a V "$MOUNT_DIR/.background"
+    fi
 fi
 
 # Set Finder window layout via AppleScript
@@ -53,6 +57,7 @@ osascript <<APPLESCRIPT
 tell application "Finder"
     tell disk "$VOLUME_NAME"
         open
+        delay 2
         set current view of container window to icon view
         set toolbar visible of container window to false
         set statusbar visible of container window to false
@@ -63,19 +68,23 @@ tell application "Finder"
         if exists file ".background:background.png" then
             set background picture of theViewOptions to file ".background:background.png"
         end if
+        delay 1
         set position of item "Write On.app" of container window to {160, 240}
         set position of item "Applications" of container window to {480, 240}
+        delay 1
         close
         open
         update without registering applications
-        delay 1
+        delay 2
         close
+        delay 1
     end tell
 end tell
 APPLESCRIPT
 
 # Make sure writes are flushed
 sync
+sleep 3
 
 # Unmount
 hdiutil detach "$MOUNT_DIR"
@@ -85,6 +94,31 @@ hdiutil convert "$TEMP_DMG" -format UDZO -imagekey zlib-level=9 -o "$OUTPUT_DMG"
 
 # Clean up temp DMG
 rm -f "$TEMP_DMG"
+
+# Verify final DMG contents
+echo ""
+echo "Verifying DMG contents..."
+VERIFY_DIR=$(hdiutil attach "$OUTPUT_DMG" -readonly -noverify | grep "/Volumes/" | sed 's/.*\/Volumes/\/Volumes/')
+VERIFY_OK=true
+if [ ! -d "$VERIFY_DIR/Write On.app" ]; then
+    echo "  WARN: App bundle not found in DMG"
+    VERIFY_OK=false
+fi
+if [ ! -L "$VERIFY_DIR/Applications" ]; then
+    echo "  WARN: Applications symlink not found in DMG"
+    VERIFY_OK=false
+fi
+if [ -f "$BG_IMAGE" ] && [ ! -f "$VERIFY_DIR/.background/background.png" ]; then
+    echo "  WARN: Background image not found in DMG"
+    VERIFY_OK=false
+fi
+if [ ! -f "$VERIFY_DIR/.DS_Store" ]; then
+    echo "  WARN: .DS_Store not found — Finder layout may not persist"
+fi
+if $VERIFY_OK; then
+    echo "  OK: App, Applications symlink, and background verified"
+fi
+hdiutil detach "$VERIFY_DIR" -quiet
 
 echo ""
 echo "DMG created: $OUTPUT_DMG"
